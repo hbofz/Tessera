@@ -14,15 +14,15 @@
  * never fuzzy answer matching.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Answer, Rule } from "../engine/types.js";
 import type { GridParams } from "../engine/clock.js";
-import { DEFAULT_PARAMS, gridAtTick, graceTicks } from "../engine/clock.js";
+import { DEFAULT_PARAMS, gridAtTick } from "../engine/clock.js";
 import { readoutShape } from "../engine/readout-shape.js";
 import type { Verifier } from "../auth/verifier.js";
 import { GridView } from "./GridView.js";
 import { AnswerInput } from "./AnswerInput.js";
-import { useGridClock } from "./useGridClock.js";
+import { MovePeek } from "./MovePeek.js";
 import type { Credential } from "../auth/verifier.js";
 
 export interface PracticeProps {
@@ -38,22 +38,30 @@ export interface PracticeProps {
 type Feedback = { kind: "correct" } | { kind: "wrong" } | null;
 
 export function Practice({ rule, credential, verifier, seed, params = DEFAULT_PARAMS }: PracticeProps) {
-  const { grid, tick, progress } = useGridClock(seed, params);
   const [streak, setStreak] = useState(0);
   const [best, setBest] = useState(0);
   const [feedback, setFeedback] = useState<Feedback>(null);
-  // Force the input to remount (clearing its picks) after each attempt.
+  // Once the user has missed at least once, offer the opt-in "peek the move"
+  // reminder. We don't show it from the start so a confident user never sees it.
+  const [offerPeek, setOfferPeek] = useState(false);
+  // Each round draws a FRESH practice grid. Practice is about drilling the move
+  // on new puzzles, so the grid advances per attempt — independent of the wall
+  // clock (the clock only rolls every period, which would freeze practice on one
+  // grid between rollovers). Practice grids are public, so this leaks nothing.
   const [round, setRound] = useState(0);
+
+  const practiceTick = round; // a dedicated, non-clock stream of sample grids
+  const grid = useMemo(
+    () => gridAtTick(`${seed}#practice`, practiceTick, params),
+    [seed, practiceTick, params],
+  );
 
   const shape = readoutShape(rule.readout, params.rows, params.cols);
 
   const check = (answer: Answer) => {
-    // Grace window: accept if the answer matches the move on any adjacent tick.
-    const matched = graceTicks(tick).some((t) => {
-      if (t < 0) return false;
-      const g = gridAtTick(seed, t, params);
-      return verifier.verify(credential, g, answer, t);
-    });
+    // Check against THIS round's grid directly. No clock grace window is needed:
+    // the practice grid doesn't roll out from under the user mid-attempt.
+    const matched = verifier.verify(credential, grid, answer, practiceTick);
 
     if (matched) {
       setStreak((s) => {
@@ -65,7 +73,9 @@ export function Practice({ rule, credential, verifier, seed, params = DEFAULT_PA
     } else {
       setStreak(0);
       setFeedback({ kind: "wrong" });
+      setOfferPeek(true); // struggling — make the reminder available
     }
+    // Advance to a fresh grid for the next attempt.
     setRound((r) => r + 1);
   };
 
@@ -83,7 +93,6 @@ export function Practice({ rule, credential, verifier, seed, params = DEFAULT_PA
       <StreakBadge streak={streak} best={best} />
 
       <GridView grid={grid} cellSize={56} ariaLabel="practice challenge grid" />
-      <PeriodBar progress={progress} />
 
       <AnswerInput
         key={round}
@@ -94,6 +103,8 @@ export function Practice({ rule, credential, verifier, seed, params = DEFAULT_PA
       />
 
       <FeedbackBanner feedback={feedback} />
+
+      {offerPeek && <MovePeek rule={rule} params={params} peekSeed={seed} />}
     </section>
   );
 }
@@ -134,13 +145,3 @@ function FeedbackBanner({ feedback }: { feedback: Feedback }) {
   );
 }
 
-function PeriodBar({ progress }: { progress: number }) {
-  return (
-    <div
-      aria-hidden="true"
-      style={{ width: 200, height: 5, background: "#eee", borderRadius: 999, overflow: "hidden" }}
-    >
-      <div style={{ width: `${(1 - progress) * 100}%`, height: "100%", background: "#0072B2" }} />
-    </div>
-  );
-}

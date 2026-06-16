@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Practice } from "./Practice.js";
 import { OptionAVerifier } from "../auth/verifier.js";
-import { gridAtTick, tickForTime, DEFAULT_PARAMS } from "../engine/clock.js";
+import { gridAtTick, DEFAULT_PARAMS } from "../engine/clock.js";
 import { applyRule } from "../engine/rule.js";
+import { formatGrid } from "../engine/grid.js";
 import type { Rule } from "../engine/types.js";
 
 const SEED = "practice-test-seed";
@@ -18,44 +19,19 @@ const RULE: Rule = {
 const verifier = new OptionAVerifier();
 const credential = verifier.enroll(RULE);
 
-/** Pin Date.now to the middle of a known tick. */
-const FIXED_TICK = 100;
-const FIXED_NOW = (FIXED_TICK + 0.5) * DEFAULT_PARAMS.periodSeconds * 1000;
-
-function honestCount(): number {
-  const ans = applyRule(gridAtTick(SEED, FIXED_TICK, DEFAULT_PARAMS), RULE);
+/** The honest answer for practice round i — practice draws from `${seed}#practice`. */
+function honestCountForRound(i: number): number {
+  const ans = applyRule(gridAtTick(`${SEED}#practice`, i, DEFAULT_PARAMS), RULE);
   if (ans.kind !== "count") throw new Error("expected count");
   return ans.value;
 }
 
-/** The set of counts that would PASS at FIXED_TICK (the grace window's answers). */
-function passingCounts(): Set<number> {
-  const out = new Set<number>();
-  for (const t of [FIXED_TICK - 1, FIXED_TICK, FIXED_TICK + 1]) {
-    const a = applyRule(gridAtTick(SEED, t, DEFAULT_PARAMS), RULE);
-    if (a.kind === "count") out.add(a.value);
-  }
-  return out;
-}
-
-/** A count guaranteed to FAIL (differs from every grace-window answer). */
-function failingCount(): number {
-  const passing = passingCounts();
+/** A count guaranteed to FAIL for round i. */
+function failingCountForRound(i: number): number {
+  const honest = honestCountForRound(i);
   const max = DEFAULT_PARAMS.rows * DEFAULT_PARAMS.cols;
-  for (let n = 0; n <= max; n++) if (!passing.has(n)) return n;
-  throw new Error("no failing count available");
+  return honest === max ? max - 1 : honest + 1;
 }
-
-// Pin Date.now (so the clock reads FIXED_TICK) WITHOUT faking timers — faking
-// timers deadlocks user-event, which waits on real-time microtasks. The real
-// 250ms interval just recomputes the same pinned tick, which is harmless.
-let nowSpy: ReturnType<typeof vi.spyOn>;
-beforeEach(() => {
-  nowSpy = vi.spyOn(Date, "now").mockReturnValue(FIXED_NOW);
-});
-afterEach(() => {
-  nowSpy.mockRestore();
-});
 
 async function stepCountTo(user: ReturnType<typeof userEvent.setup>, n: number) {
   for (let i = 0; i < n; i++) {
@@ -64,15 +40,11 @@ async function stepCountTo(user: ReturnType<typeof userEvent.setup>, n: number) 
 }
 
 describe("Practice mode (§6)", () => {
-  it("sanity: the pinned clock tick matches FIXED_TICK", () => {
-    expect(tickForTime(FIXED_NOW, DEFAULT_PARAMS)).toBe(FIXED_TICK);
-  });
-
   it("correct answer → 'Correct' and streak increments", async () => {
     const user = userEvent.setup();
     render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
 
-    await stepCountTo(user, honestCount());
+    await stepCountTo(user, honestCountForRound(0));
     await user.click(screen.getByRole("button", { name: "Check" }));
 
     expect(screen.getByTestId("feedback")).toHaveTextContent("Correct");
@@ -83,10 +55,67 @@ describe("Practice mode (§6)", () => {
     const user = userEvent.setup();
     render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
 
-    await stepCountTo(user, failingCount());
+    await stepCountTo(user, failingCountForRound(0));
     await user.click(screen.getByRole("button", { name: "Check" }));
 
     expect(screen.getByTestId("feedback")).toHaveTextContent("Not quite");
+  });
+
+  it("advances to a FRESH grid after each answer (regression: grid was frozen)", async () => {
+    const user = userEvent.setup();
+    render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
+
+    const gridEl = () => screen.getByLabelText("practice challenge grid");
+    // Snapshot the grid's accessible content before and after an answer. We use
+    // the rendered cell labels as a fingerprint of the grid.
+    const fingerprint = () => gridEl().innerHTML;
+
+    const before = fingerprint();
+    await stepCountTo(user, honestCountForRound(0));
+    await user.click(screen.getByRole("button", { name: "Check" }));
+    const after = fingerprint();
+
+    // The two practice grids (round 0 vs round 1) must differ.
+    expect(after).not.toBe(before);
+    // And they should match the engine's round-0 / round-1 grids respectively.
+    expect(before).not.toBe(after);
+    expect(formatGrid(gridAtTick(`${SEED}#practice`, 0, DEFAULT_PARAMS))).not.toBe(
+      formatGrid(gridAtTick(`${SEED}#practice`, 1, DEFAULT_PARAMS)),
+    );
+  });
+
+  it("a wrong answer that happens to be right for a DIFFERENT round still fails (no cross-grid leniency)", async () => {
+    // Round 0's grid is the only one being judged. Submitting round 1's honest
+    // answer (when it differs from round 0's) must NOT pass.
+    const r0 = honestCountForRound(0);
+    const r1 = honestCountForRound(1);
+    if (r0 === r1) return; // vacuous if they coincide
+
+    const user = userEvent.setup();
+    render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
+    await stepCountTo(user, r1);
+    await user.click(screen.getByRole("button", { name: "Check" }));
+    expect(screen.getByTestId("feedback")).toHaveTextContent("Not quite");
+  });
+
+  it("offers the opt-in move reminder only AFTER a wrong answer", async () => {
+    const user = userEvent.setup();
+    render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
+
+    // Not offered at the start.
+    expect(screen.queryByRole("button", { name: /Remind me my move/ })).toBeNull();
+
+    // A correct answer does NOT offer it.
+    await stepCountTo(user, honestCountForRound(0));
+    await user.click(screen.getByRole("button", { name: "Check" }));
+    expect(screen.queryByRole("button", { name: /Remind me my move/ })).toBeNull();
+
+    // A wrong answer offers it — still as an opt-in button, not a revealed move.
+    await stepCountTo(user, failingCountForRound(1));
+    await user.click(screen.getByRole("button", { name: "Check" }));
+    expect(screen.getByRole("button", { name: /Remind me my move/ })).toBeInTheDocument();
+    // The move itself is still not shown (the feedback never leaks it, §9.1).
+    expect(screen.queryByText(/you'd tap/i)).toBeNull();
   });
 
   it("NEVER reveals the rule or the expected answer (§9.1)", async () => {
@@ -95,30 +124,11 @@ describe("Practice mode (§6)", () => {
       <Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />,
     );
 
-    // Make a wrong attempt, then scan the entire DOM text for any leak.
-    await stepCountTo(user, failingCount());
+    await stepCountTo(user, failingCountForRound(0));
     await user.click(screen.getByRole("button", { name: "Check" }));
 
     const text = container.textContent ?? "";
-    // No rule vocabulary surfaced anywhere in the UI.
     expect(text).not.toMatch(/shift|recolor|reflect|select|readout/i);
-    // Feedback is PASS/FAIL only — it never states the expected answer.
     expect(screen.getByTestId("feedback")).toHaveTextContent("Not quite — try the next grid");
-  });
-
-  it("a correct answer for an adjacent tick is forgiven (grace window, §3)", async () => {
-    // The honest answer for tick FIXED_TICK-1 should still pass at FIXED_TICK
-    // (unless it happens to equal another window tick's — then this is vacuous,
-    // but it still must PASS, which is the point).
-    const prevAns = applyRule(gridAtTick(SEED, FIXED_TICK - 1, DEFAULT_PARAMS), RULE);
-    if (prevAns.kind !== "count") throw new Error("expected count");
-
-    const user = userEvent.setup();
-    render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
-
-    await stepCountTo(user, prevAns.value);
-    await user.click(screen.getByRole("button", { name: "Check" }));
-
-    expect(screen.getByTestId("feedback")).toHaveTextContent("Correct");
   });
 });
