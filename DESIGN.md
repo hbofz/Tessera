@@ -239,7 +239,7 @@ If the single screen (1–4) feels good, the idea is validated and the rest is e
 
 ## 12. Open questions (not yet decided)
 
-- **B1 vs B2** concrete protocol — settle when you want the real never-leaves-your-head verifier. (Feasibility confirmed; protocol not chosen.)
+- ~~**B1 vs B2** concrete protocol~~ — **DECIDED & built: "B-enum"** (`src/auth/option-b-verifier.ts`). The server stores `slow_hash(canonical(R), salt)` only (never R) and verifies by *enumerating the finite menu* (§9.4): for each candidate rule `r` where `r(C(t)) == A`, it checks `slow_hash(r) == stored`; PASS if the enrolled R is among them. This exploits the enumerable-menu invariant directly, needs no SNARK toolchain (unlike textbook B1), and is genuinely stronger than B2 (R is never decrypted into RAM). The server learns the answer `A` and that *some* rule producing `A` matches — but not *which* rule, since many rules can yield the same `A`. The across-many-logins elimination attack of §7 is the modeled, accepted limit. Implements the same `Verifier` interface as Option A, so `login.ts` is unchanged (the §6 seam). Slow hash is scrypt via a `SlowHash` interface (browser can inject PBKDF2/Argon2).
 - **Grid generation quality** — what makes a grid both *pleasant* and a *good challenge*; how to avoid degenerate grids (e.g. where "count of red" is always the same, or a readout is constant regardless of the move). Likely: reject/regenerate grids whose answer distribution across the rule space is too peaked.
 - **Naming** — "Tessera" is a working title (a tessera is one tile in a mosaic). Rename freely.
 

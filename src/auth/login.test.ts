@@ -180,3 +180,23 @@ describe("attemptLogin — rate limiting (§6)", () => {
     expect(out.result).toBe("pass");
   });
 });
+
+describe("attemptLogin — verifier robustness", () => {
+  it("a verifier that THROWS fails the login instead of crashing it (finding #4)", () => {
+    const throwingVerifier = {
+      kind: "throwing",
+      enroll: () => ({ kind: "throwing", payload: {} }),
+      verify: () => {
+        throw new Error("transient verifier failure");
+      },
+    };
+    const enrollment: Enrollment = {
+      credential: { kind: "throwing", payload: {} },
+      seed: SEED,
+      params: DEFAULT_PARAMS,
+    };
+    const state = newLoginState();
+    const out = attemptLogin(enrollment, state, throwingVerifier, honestAnswer(5), timeAtTick(5));
+    expect(out).toEqual({ result: "fail", reason: "no-match" });
+  });
+});

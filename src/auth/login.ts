@@ -27,7 +27,7 @@
  * check before either records. Out of scope for the v1 learning sandbox.
  */
 
-import type { Answer } from "../engine/types.js";
+import type { Answer, Grid } from "../engine/types.js";
 import type { GridParams } from "../engine/clock.js";
 import { gridAtTick, tickForTime, graceTicks, defaultAccept } from "../engine/clock.js";
 import type { AcceptGrid } from "../engine/clock.js";
@@ -131,7 +131,11 @@ export function attemptLogin(
   for (const tick of [ticks[2], ticks[1], ticks[0]]) {
     if (tick < 0) continue; // no grids before the epoch
     const grid = gridAtTick(enrollment.seed, tick, enrollment.params, accept);
-    if (verifier.verify(enrollment.credential, grid, submitted, tick)) {
+    // A verifier throw (e.g. a transient resource failure, or a tampered
+    // credential a verifier rejects by throwing) must fail THIS tick, not abort
+    // the whole login — otherwise one bad tick denies an otherwise-valid login
+    // and turns into an availability bug. Treat any throw as "no match here".
+    if (verifySafely(verifier, enrollment.credential, grid, submitted, tick)) {
       // 3. Replay defense via monotonic tick progress: reject any tick at or
       //    below the high-water mark (covers the whole grace window, not just an
       //    exact repeat).
@@ -147,6 +151,23 @@ export function attemptLogin(
 }
 
 // --- internal helpers ---
+
+/** Run verifier.verify, treating any throw as a non-match for that tick (see the
+ *  call site). The verifier interface allows throws for programming errors; here
+ *  in the login loop we must never let one abort an otherwise-valid login. */
+function verifySafely(
+  verifier: Verifier,
+  credential: Credential,
+  grid: Grid,
+  submitted: Answer,
+  tick: number,
+): boolean {
+  try {
+    return verifier.verify(credential, grid, submitted, tick);
+  } catch {
+    return false;
+  }
+}
 
 function pruneAttempts(state: LoginState, nowMs: number, windowMs: number): void {
   const cutoff = nowMs - windowMs;
