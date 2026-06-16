@@ -27,6 +27,7 @@ function makeEnrollment(): Enrollment {
     credential: new OptionAVerifier().enroll(RULE),
     seed: "s",
     params: DEFAULT_PARAMS,
+    readoutShape: { kind: "count", max: 16 },
   };
 }
 

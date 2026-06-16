@@ -15,20 +15,20 @@
  */
 
 import { useMemo, useState } from "react";
-import type { Answer, Rule } from "../engine/types.js";
+import type { Answer } from "../engine/types.js";
 import type { GridParams } from "../engine/clock.js";
 import { DEFAULT_PARAMS, gridAtTick } from "../engine/clock.js";
-import { readoutShape } from "../engine/readout-shape.js";
+import type { ReadoutShape } from "../engine/readout-shape.js";
 import type { Verifier } from "../auth/verifier.js";
 import { GridView } from "./GridView.js";
 import { AnswerInput } from "./AnswerInput.js";
-import { MovePeek } from "./MovePeek.js";
 import type { Credential } from "../auth/verifier.js";
 
 export interface PracticeProps {
-  /** The move being drilled. Practice needs the rule so the verifier can check;
-   *  it is NOT displayed (§9.1). Comes from enrollment / the builder. */
-  readonly rule: Rule;
+  /** The answer SHAPE the UI must render (cell/count/line). NOT the rule — under
+   *  Option B the client doesn't have the rule at all; verification goes through
+   *  the verifier. The shape is the minimum the input needs (§9.1). */
+  readonly shape: ReadoutShape;
   readonly credential: Credential;
   readonly verifier: Verifier;
   readonly seed: string;
@@ -37,13 +37,10 @@ export interface PracticeProps {
 
 type Feedback = { kind: "correct" } | { kind: "wrong" } | null;
 
-export function Practice({ rule, credential, verifier, seed, params = DEFAULT_PARAMS }: PracticeProps) {
+export function Practice({ shape, credential, verifier, seed, params = DEFAULT_PARAMS }: PracticeProps) {
   const [streak, setStreak] = useState(0);
   const [best, setBest] = useState(0);
   const [feedback, setFeedback] = useState<Feedback>(null);
-  // Once the user has missed at least once, offer the opt-in "peek the move"
-  // reminder. We don't show it from the start so a confident user never sees it.
-  const [offerPeek, setOfferPeek] = useState(false);
   // Each round draws a FRESH practice grid. Practice is about drilling the move
   // on new puzzles, so the grid advances per attempt — independent of the wall
   // clock (the clock only rolls every period, which would freeze practice on one
@@ -55,8 +52,6 @@ export function Practice({ rule, credential, verifier, seed, params = DEFAULT_PA
     () => gridAtTick(`${seed}#practice`, practiceTick, params),
     [seed, practiceTick, params],
   );
-
-  const shape = readoutShape(rule.readout, params.rows, params.cols);
 
   const check = (answer: Answer) => {
     // Check against THIS round's grid directly. No clock grace window is needed:
@@ -73,7 +68,6 @@ export function Practice({ rule, credential, verifier, seed, params = DEFAULT_PA
     } else {
       setStreak(0);
       setFeedback({ kind: "wrong" });
-      setOfferPeek(true); // struggling — make the reminder available
     }
     // Advance to a fresh grid for the next attempt.
     setRound((r) => r + 1);
@@ -94,17 +88,9 @@ export function Practice({ rule, credential, verifier, seed, params = DEFAULT_PA
 
       <GridView grid={grid} cellSize={56} ariaLabel="practice challenge grid" />
 
-      <AnswerInput
-        key={round}
-        readout={rule.readout}
-        {...(shape.kind === "line" ? { lineLength: shape.length } : {})}
-        {...(shape.kind === "count" ? { maxCount: shape.max } : {})}
-        onSubmit={check}
-      />
+      <AnswerInput key={round} shape={shape} onSubmit={check} />
 
       <FeedbackBanner feedback={feedback} />
-
-      {offerPeek && <MovePeek rule={rule} params={params} peekSeed={seed} />}
     </section>
   );
 }

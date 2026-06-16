@@ -8,7 +8,7 @@ describe("AnswerInput — cell", () => {
   it("produces a cell answer for the picked color", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn<(a: Answer) => void>();
-    render(<AnswerInput readout={{ type: "cell", target: { kind: "center" } }} onSubmit={onSubmit} />);
+    render(<AnswerInput shape={{ kind: "cell" }} onSubmit={onSubmit} />);
 
     await user.click(screen.getByLabelText("green triangle"));
     await user.click(screen.getByRole("button", { name: "Check" }));
@@ -19,14 +19,14 @@ describe("AnswerInput — cell", () => {
   it("can pick empty", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn<(a: Answer) => void>();
-    render(<AnswerInput readout={{ type: "cell", target: { kind: "center" } }} onSubmit={onSubmit} />);
+    render(<AnswerInput shape={{ kind: "cell" }} onSubmit={onSubmit} />);
     await user.click(screen.getByLabelText("empty"));
     await user.click(screen.getByRole("button", { name: "Check" }));
     expect(onSubmit).toHaveBeenCalledWith({ kind: "cell", value: "_" });
   });
 
   it("cannot submit before picking", () => {
-    render(<AnswerInput readout={{ type: "cell", target: { kind: "center" } }} onSubmit={vi.fn()} />);
+    render(<AnswerInput shape={{ kind: "cell" }} onSubmit={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Check" })).toBeDisabled();
   });
 });
@@ -35,7 +35,7 @@ describe("AnswerInput — count", () => {
   it("steps up and submits the number", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn<(a: Answer) => void>();
-    render(<AnswerInput readout={{ type: "count", color: "R" }} maxCount={16} onSubmit={onSubmit} />);
+    render(<AnswerInput shape={{ kind: "count", max: 16 }} onSubmit={onSubmit} />);
 
     await user.click(screen.getByRole("button", { name: "increase" }));
     await user.click(screen.getByRole("button", { name: "increase" }));
@@ -48,7 +48,7 @@ describe("AnswerInput — count", () => {
   it("clamps at 0 and at max", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn<(a: Answer) => void>();
-    render(<AnswerInput readout={{ type: "count", color: "R" }} maxCount={2} onSubmit={onSubmit} />);
+    render(<AnswerInput shape={{ kind: "count", max: 2 }} onSubmit={onSubmit} />);
 
     await user.click(screen.getByRole("button", { name: "decrease" })); // stays 0
     await user.click(screen.getByRole("button", { name: "Check" }));
@@ -62,8 +62,7 @@ describe("AnswerInput — line", () => {
     const onSubmit = vi.fn<(a: Answer) => void>();
     render(
       <AnswerInput
-        readout={{ type: "line", which: { kind: "row", index: 0 }, order: "ltr" }}
-        lineLength={2}
+        shape={{ kind: "line", length: 2 }}
         onSubmit={onSubmit}
       />,
     );
