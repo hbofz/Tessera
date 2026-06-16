@@ -124,6 +124,27 @@ R  =  SELECT  →  TRANSFORM (×1–2)  →  READOUT
 
 **App-wiring decision (the live demo now runs Option B).** B-enum verifies by enumerating the menu and hashing each candidate. With a *slow* hash this is unusable: a `count` readout has hundreds of candidates × ~68ms scrypt ≈ **17s per login**. A deeper constraint also surfaced: a fast *client-side* proof would require the client to hold `R`, which breaks §2 row 1 ("the move isn't on the phone"). The only design that is simultaneously **server-safe, phone-safe, and fast** in this UX is **server-side enumeration with a FAST hash**. So the app uses SHA-256 (`verifyhash.ts`), making a worst-case verify ~43ms. The accepted tradeoff: a *leaked verifier* becomes cheaply brute-forceable (R is low-entropy). Mitigations: login rate-limiting (§6, present) and an optional server-held **pepper** (keyed hash) so a DB-only breach that misses the pepper can't brute-force at all. The scrypt path (`slowhash.ts`) is retained for higher-hardness deployments where verify latency is acceptable. The "peek the move" practice reminder is **dropped** under Option B — there is no rule on the device to show, by design.
 
+### The fast-vs-slow-hash tradeoff, in plain terms (why the app accepts a "weaker" verifier)
+
+The move is picked from a *small menu* (thousands of possibilities, not millions). So if an attacker steals the stored fingerprint of your move, they can **guess-and-check**: scramble every possible move, see which scramble matches. The menu is small enough to try them all. The only defense against this is making **each guess slow**.
+
+That is the same slowness the *honest user* pays at every login — and it's the same scramble run once per candidate during verification. Hence the tension:
+
+| | Slow scramble (scrypt) | **Fast scramble (SHA-256) — what the app uses** |
+|---|---|---|
+| One honest login | ~17 seconds | **~43 ms** |
+| Attacker brute-forcing a *stolen* fingerprint | slow, costly | **fast, cheap** ⚠️ |
+
+We chose the **fast** scramble. "Weaker" means precisely this: **if the entire server database is stolen, cracking the move offline is cheaper than it would be with the slow scramble.** It does *not* mean the database breach is undefended, and it does *not* affect Tessera's two headline defenses — a shoulder-surfer and a stolen phone are fully protected either way (the move is nowhere on the device).
+
+Why this is the right call for a learning project:
+1. **It's the only point that satisfies all three of server-safe, phone-safe, and fast** in this UX (a slow hash = 17s logins; a client-side proof = R back on the phone, breaking §2 row 1).
+2. **Live brute-forcing is already blocked** by login rate-limiting (§6) — the weakness only applies *offline*, against a stolen DB.
+3. **The optional pepper** narrows even that: a DB-only theft that misses the server's pepper key can't brute-force at all; only a full server takeover exposes the verifier.
+4. **The slow path is kept** (`slowhash.ts`) — a higher-security deployment can flip back to scrypt and eat the latency.
+
+In one line: we traded *maximum hardness against a stolen database* for *43ms logins instead of 17s*, because usability is the whole point of this experiment — and the slow option remains available.
+
 > **This is the single most important technical decision in the project.** It determines whether "the secret never leaves your head" is literally true. The enumerable-menu constraint (§5) is what makes B possible — a Turing-complete rule language would make `R` un-hashable and the strength meter unsimulable. Keep the rule space finite.
 
 ---
