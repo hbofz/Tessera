@@ -1,6 +1,12 @@
 /** Public surface of the auth layer (login/verify loop, §10). */
 export type { Credential, Verifier } from "./verifier.js";
-export { OptionAVerifier, OPTION_A_KIND } from "./verifier.js";
+export { OptionAVerifier, OPTION_A_KIND, recoverOptionARule } from "./verifier.js";
+export {
+  saveEnrollment,
+  loadEnrollment,
+  clearEnrollment,
+  type KeyValueStore,
+} from "./persistence.js";
 export {
   attemptLogin,
   newLoginState,

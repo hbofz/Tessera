@@ -91,3 +91,19 @@ export class OptionAVerifier implements Verifier {
     return answersEqual(applyRule(grid, rule), submitted);
   }
 }
+
+/**
+ * ⚠️ OPTION A ONLY: recover the raw rule from an Option A credential.
+ *
+ * Needed so a session restored from storage can still drive the builder-style
+ * previews (the MovePeek reminder) and re-enroll — under Option A the credential
+ * is the only place the rule lives after the builder. This is impossible under
+ * Option B by design (the rule is never stored), which is correct: the peek
+ * reminder is inherently an Option-A affordance. Returns null for non-Option-A
+ * credentials. Do NOT use this on a verification path — verify() is the only
+ * boolean-returning check (§9.1).
+ */
+export function recoverOptionARule(credential: Credential): Rule | null {
+  if (credential.kind !== OPTION_A_KIND) return null;
+  return (credential.payload as OptionAPayload).rule;
+}

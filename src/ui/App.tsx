@@ -2,9 +2,13 @@
  * App — the §11 "smallest thing" wired end to end.
  *
  * Flow: build a move (§8 Builder, ending at the dry-run gate) → then practice it
- * (§6). Before enrolling, there's no move to practice, so Practice prompts you to
- * build one first. Once built, the move goes dark — only the builder ever showed
- * it (§9.1), and we keep it in memory just to drive the verifier.
+ * (§6). The enrollment (credential + seed + params) is PERSISTED to localStorage
+ * so the move survives a refresh; on boot a returning user skips the builder and
+ * lands in practice. Once built, the move goes dark — only the builder/peek ever
+ * show it (§9.1); the credential drives the verifier.
+ *
+ * ⚠️ Under Option A the persisted credential embeds the raw rule (the §6 Option
+ * A tradeoff, localized to the browser). See persistence.ts.
  */
 
 import { useMemo, useState } from "react";
@@ -13,25 +17,47 @@ import { Builder } from "./Builder.js";
 import { Practice } from "./Practice.js";
 import { useGridClock } from "./useGridClock.js";
 import { DEFAULT_PARAMS } from "../engine/clock.js";
-import { OptionAVerifier } from "../auth/verifier.js";
+import { OptionAVerifier, recoverOptionARule } from "../auth/verifier.js";
+import { saveEnrollment, loadEnrollment, clearEnrollment } from "../auth/persistence.js";
+import type { Enrollment } from "../auth/login.js";
 import type { Rule } from "../engine/types.js";
-import type { Credential } from "../auth/verifier.js";
 
-const DEMO_SEED = "tessera-demo-seed";
+// Stable seed for this user's challenge grids (§10). One device, one user for
+// v1; a real deployment would derive this per-account at enrollment.
+const USER_SEED = "tessera-user-seed";
 
 type Tab = "clock" | "build" | "practice";
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("clock");
-  // The enrolled move. Held in memory only to drive the verifier — never shown
-  // again after the builder (§9.1).
-  const [rule, setRule] = useState<Rule | null>(null);
-
   const verifier = useMemo(() => new OptionAVerifier(), []);
-  const credential: Credential | null = useMemo(
-    () => (rule ? verifier.enroll(rule) : null),
-    [rule, verifier],
+
+  // Restore a persisted enrollment on first render (lazy initializer runs once).
+  const [enrollment, setEnrollment] = useState<Enrollment | null>(() => loadEnrollment());
+  const [tab, setTab] = useState<Tab>(() => (loadEnrollment() ? "practice" : "clock"));
+
+  // The rule, recovered from the credential, drives previews + the peek reminder
+  // (Option A only — under Option B there'd be no rule to recover, and no peek).
+  const rule: Rule | null = useMemo(
+    () => (enrollment ? recoverOptionARule(enrollment.credential) : null),
+    [enrollment],
   );
+
+  const enroll = (r: Rule) => {
+    const e: Enrollment = {
+      credential: verifier.enroll(r),
+      seed: USER_SEED,
+      params: DEFAULT_PARAMS,
+    };
+    saveEnrollment(e);
+    setEnrollment(e);
+    setTab("practice");
+  };
+
+  const forget = () => {
+    clearEnrollment();
+    setEnrollment(null);
+    setTab("build");
+  };
 
   return (
     <main
@@ -44,7 +70,7 @@ export function App() {
           Grid
         </TabButton>
         <TabButton active={tab === "build"} onClick={() => setTab("build")}>
-          {rule ? "Move ✓" : "Build a move"}
+          {enrollment ? "Move ✓" : "Build a move"}
         </TabButton>
         <TabButton active={tab === "practice"} onClick={() => setTab("practice")}>
           Practice
@@ -54,17 +80,18 @@ export function App() {
       {tab === "clock" && <ClockView />}
 
       {tab === "build" && (
-        <Builder
-          onComplete={(r) => {
-            setRule(r);
-            setTab("practice");
-          }}
-        />
+        <>
+          {enrollment && <AlreadyEnrolledNote onForget={forget} />}
+          <Builder onComplete={enroll} />
+        </>
       )}
 
       {tab === "practice" &&
-        (rule && credential ? (
-          <Practice rule={rule} credential={credential} verifier={verifier} seed={DEMO_SEED} />
+        (enrollment && rule ? (
+          <>
+            <Practice rule={rule} credential={enrollment.credential} verifier={verifier} seed={enrollment.seed} />
+            <ForgetMove onForget={forget} />
+          </>
         ) : (
           <NeedAMove onBuild={() => setTab("build")} />
         ))}
@@ -87,8 +114,39 @@ function NeedAMove({ onBuild }: { onBuild: () => void }) {
   );
 }
 
+function AlreadyEnrolledNote({ onForget }: { onForget: () => void }) {
+  return (
+    <div style={{ textAlign: "center", color: "#666", maxWidth: 360, fontSize: 14 }}>
+      <p style={{ margin: 0 }}>
+        You already have a move. Building a new one will <strong>replace</strong> it.
+      </p>
+      <button type="button" onClick={onForget} style={linkBtn}>
+        or forget the current move
+      </button>
+    </div>
+  );
+}
+
+function ForgetMove({ onForget }: { onForget: () => void }) {
+  return (
+    <button type="button" onClick={onForget} style={linkBtn}>
+      Forget this move &amp; start over
+    </button>
+  );
+}
+
+const linkBtn: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "#0072B2",
+  cursor: "pointer",
+  fontSize: 13,
+  textDecoration: "underline",
+  padding: 4,
+};
+
 function ClockView() {
-  const { grid, tick, progress } = useGridClock(DEMO_SEED, DEFAULT_PARAMS);
+  const { grid, tick, progress } = useGridClock(USER_SEED, DEFAULT_PARAMS);
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
       <p style={{ margin: 0, color: "#666", maxWidth: 360, textAlign: "center" }}>
