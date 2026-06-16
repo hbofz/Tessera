@@ -6,19 +6,18 @@ A TOTP-style second factor where the rolling secret is a **move you perform in y
 
 ## Status
 
-The **pure, testable core** is complete. The **frontend** (React + Vite) is now scaffolded, starting with the colorblind-safe grid renderer.
+**v1 is feature-complete.** All six §11 steps are built and tested; the full loop runs end-to-end in the browser: build a move → prove it from memory → practice it → get PASS/FAIL.
 
 | §11 step | Component | Module | Status |
 |---|---|---|---|
 | 1 | Grid clock — deterministic `C(t)` from a seed | `src/engine/clock.ts` | ✅ |
 | 2 | Rule engine — `R(C) → answer` | `src/engine/rule.ts` | ✅ |
+| 3 | Builder wizard — SELECT→TRANSFORM→READOUT + dry-run gate | `src/ui/Builder.tsx` | ✅ |
 | 4 | Login / verify loop — grace window, rate limit, replay defense | `src/auth/` | ✅ |
 | 5 | Strength meter — blind-guess entropy + Monte-Carlo elimination | `src/engine/strength.ts` | ✅ |
-| — | Grid renderer — colorblind-safe (hue + shape), live ticking | `src/ui/GridView.tsx` | ✅ |
 | 6 | Practice mode — drill the move, instant feedback + streak | `src/ui/Practice.tsx` | ✅ |
-| 3 | Builder wizard (§8) | `src/ui/` | ⬜ last piece |
 
-The full loop now works end-to-end in practice mode: clock → grid → tap answer → verifier → PASS/FAIL. Only the builder (which produces the rule, currently hard-coded) remains for v1.
+Remaining work is the §12/§13 stretch list (real Option B verifier, two-device, duress rule, themes) — none required for the v1 "prove the magic" goal.
 
 ## Layout
 
@@ -39,9 +38,14 @@ src/
     palette.ts     colorblind-safe styles (Okabe–Ito hue + redundant shape)
     GridView.tsx   the reusable grid renderer
     AnswerInput.tsx  taps in the scalar answer (cell / count / line)
+    AnswerDisplay.tsx  read-only answer rendering (builder only)
+    builder-options.ts  human menu labels (builder only — never in practice)
+    Builder.tsx    the §8 wizard — the ONLY place the move is shown
+    StrengthVerdict.tsx  surfaces the §7 meter at commit
+    DryRunGate.tsx the memory gate where the move goes dark
     Practice.tsx   practice mode — drill the move, streak, PASS/FAIL only
     useGridClock.ts  hook: subscribe to the rolling C(t)
-    App.tsx        harness: tabs between the live grid and practice mode
+    App.tsx        wires it together: build → practice
 index.html       Vite entry
 ```
 

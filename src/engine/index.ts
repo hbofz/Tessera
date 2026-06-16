@@ -10,6 +10,7 @@ export {
   answersEqual,
 } from "./rule.js";
 export { readoutShape, type ReadoutShape } from "./readout-shape.js";
+export { readoutPositions, type PosLite } from "./readout-positions.js";
 export { Prng, hashSeed } from "./prng.js";
 export {
   gridAtTick,
