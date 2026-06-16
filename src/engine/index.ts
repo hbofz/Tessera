@@ -9,6 +9,7 @@ export {
   validateRule,
   answersEqual,
 } from "./rule.js";
+export { readoutShape, type ReadoutShape } from "./readout-shape.js";
 export { Prng, hashSeed } from "./prng.js";
 export {
   gridAtTick,

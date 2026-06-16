@@ -15,8 +15,10 @@ The **pure, testable core** is complete. The **frontend** (React + Vite) is now 
 | 4 | Login / verify loop — grace window, rate limit, replay defense | `src/auth/` | ✅ |
 | 5 | Strength meter — blind-guess entropy + Monte-Carlo elimination | `src/engine/strength.ts` | ✅ |
 | — | Grid renderer — colorblind-safe (hue + shape), live ticking | `src/ui/GridView.tsx` | ✅ |
-| 3 | Builder wizard (§8) | `src/ui/` | ⬜ next |
-| 6 | Practice mode | `src/ui/` | ⬜ next |
+| 6 | Practice mode — drill the move, instant feedback + streak | `src/ui/Practice.tsx` | ✅ |
+| 3 | Builder wizard (§8) | `src/ui/` | ⬜ last piece |
+
+The full loop now works end-to-end in practice mode: clock → grid → tap answer → verifier → PASS/FAIL. Only the builder (which produces the rule, currently hard-coded) remains for v1.
 
 ## Layout
 
@@ -36,8 +38,10 @@ src/
   ui/            React frontend (Vite)
     palette.ts     colorblind-safe styles (Okabe–Ito hue + redundant shape)
     GridView.tsx   the reusable grid renderer
+    AnswerInput.tsx  taps in the scalar answer (cell / count / line)
+    Practice.tsx   practice mode — drill the move, streak, PASS/FAIL only
     useGridClock.ts  hook: subscribe to the rolling C(t)
-    App.tsx        harness showing the live ticking grid (builder/practice next)
+    App.tsx        harness: tabs between the live grid and practice mode
 index.html       Vite entry
 ```
 
