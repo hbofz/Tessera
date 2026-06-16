@@ -88,14 +88,7 @@ export function DryRunGate({
       <GridView grid={grid} cellSize={56} ariaLabel={`dry-run grid ${index + 1} of ${rounds}`} />
 
       {/* key={index} remounts the input each round, clearing the prior pick. */}
-      <AnswerInput
-        key={index}
-        readout={rule.readout}
-        {...(shape.kind === "line" ? { lineLength: shape.length } : {})}
-        {...(shape.kind === "count" ? { maxCount: shape.max } : {})}
-        onSubmit={submit}
-        disabled={lastResult !== null}
-      />
+      <AnswerInput key={index} shape={shape} onSubmit={submit} disabled={lastResult !== null} />
 
       <div role="status" data-testid="dryrun-feedback" aria-live="assertive" style={{ minHeight: 24, fontWeight: 600 }}>
         {/* PASS/FAIL only — never the expected answer (§9.1). */}

@@ -9,6 +9,7 @@ import {
 import { OptionAVerifier } from "./verifier.js";
 import { gridAtTick, tickForTime, DEFAULT_PARAMS } from "../engine/clock.js";
 import { applyRule } from "../engine/rule.js";
+import { readoutShape } from "../engine/readout-shape.js";
 import type { Answer, Rule } from "../engine/types.js";
 
 const SEED = "login-seed";
@@ -25,6 +26,7 @@ function makeEnrollment(): Enrollment {
     credential: verifier.enroll(RULE),
     seed: SEED,
     params: DEFAULT_PARAMS,
+    readoutShape: readoutShape(RULE.readout, DEFAULT_PARAMS.rows, DEFAULT_PARAMS.cols),
   };
 }
 
@@ -194,6 +196,7 @@ describe("attemptLogin — verifier robustness", () => {
       credential: { kind: "throwing", payload: {} },
       seed: SEED,
       params: DEFAULT_PARAMS,
+      readoutShape: readoutShape(RULE.readout, DEFAULT_PARAMS.rows, DEFAULT_PARAMS.cols),
     };
     const state = newLoginState();
     const out = attemptLogin(enrollment, state, throwingVerifier, honestAnswer(5), timeAtTick(5));

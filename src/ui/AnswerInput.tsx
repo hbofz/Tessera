@@ -15,30 +15,29 @@
  */
 
 import { useState } from "react";
-import type { Answer, Cell, Color, Readout } from "../engine/types.js";
+import type { Answer, Cell, Color } from "../engine/types.js";
+import type { ReadoutShape } from "../engine/readout-shape.js";
 import { COLORS, EMPTY } from "../engine/types.js";
 import { CELL_STYLES, EMPTY_STYLE, cellLabel } from "./palette.js";
 
 export interface AnswerInputProps {
-  /** The readout shape determines which input to show. Note: we use only the
-   *  readout's TYPE and dimensions, never the expected value (§9.1). */
-  readonly readout: Readout;
-  /** Number of cells in a line readout (the line's length). Required for line. */
-  readonly lineLength?: number;
-  /** Max count for a count readout (grid cell count). Required for count. */
-  readonly maxCount?: number;
+  /** The readout SHAPE determines which input to show. Crucially this is only
+   *  the kind (+ dimensions), NOT the full readout — so the input never needs
+   *  the secret rule (§9.1). Under Option B the client doesn't even have the
+   *  rule; the shape is all the UI requires. */
+  readonly shape: ReadoutShape;
   readonly onSubmit: (answer: Answer) => void;
   readonly disabled?: boolean;
 }
 
-export function AnswerInput(props: AnswerInputProps) {
-  switch (props.readout.type) {
+export function AnswerInput({ shape, onSubmit, disabled }: AnswerInputProps) {
+  switch (shape.kind) {
     case "cell":
-      return <CellAnswer {...props} />;
+      return <CellAnswer onSubmit={onSubmit} disabled={disabled} />;
     case "count":
-      return <CountAnswer {...props} />;
+      return <CountAnswer onSubmit={onSubmit} disabled={disabled} maxCount={shape.max} />;
     case "line":
-      return <LineAnswer {...props} />;
+      return <LineAnswer onSubmit={onSubmit} disabled={disabled} lineLength={shape.length} />;
   }
 }
 
@@ -87,7 +86,12 @@ function CellChip({
 
 // --- cell readout: pick one ---
 
-function CellAnswer({ onSubmit, disabled }: AnswerInputProps) {
+interface VariantProps {
+  readonly onSubmit: (answer: Answer) => void;
+  readonly disabled?: boolean | undefined;
+}
+
+function CellAnswer({ onSubmit, disabled }: VariantProps) {
   const [picked, setPicked] = useState<Cell | null>(null);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
@@ -112,7 +116,7 @@ function CellAnswer({ onSubmit, disabled }: AnswerInputProps) {
 
 // --- count readout: a stepper ---
 
-function CountAnswer({ onSubmit, disabled, maxCount = 99 }: AnswerInputProps) {
+function CountAnswer({ onSubmit, disabled, maxCount = 99 }: VariantProps & { maxCount?: number }) {
   const [n, setN] = useState(0);
   const clamp = (x: number) => Math.max(0, Math.min(maxCount, x));
   return (
@@ -159,7 +163,7 @@ function StepButton({
 
 // --- line readout: tap a sequence ---
 
-function LineAnswer({ onSubmit, disabled, lineLength = 4 }: AnswerInputProps) {
+function LineAnswer({ onSubmit, disabled, lineLength = 4 }: VariantProps & { lineLength?: number }) {
   // One slot per line cell; each slot cycles through the cell options on tap.
   const [seq, setSeq] = useState<Cell[]>(() => Array.from({ length: lineLength }, () => EMPTY as Cell));
 
