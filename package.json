@@ -1,0 +1,16 @@
+{
+  "name": "tessera",
+  "version": "0.0.1",
+  "private": true,
+  "description": "A TOTP-style second factor where the rolling secret is a move you perform in your head.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
