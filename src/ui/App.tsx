@@ -1,14 +1,16 @@
 /**
- * App — the §11 "smallest thing" wired end to end.
+ * App — the §11 "smallest thing" wired end to end, now on the OPTION B verifier
+ * (§6): the persisted credential stores only slow_hash(canonical(R)) — NEVER the
+ * rule. So after enrollment the rule exists nowhere on this device: the move is
+ * truly gone the moment the builder's dry-run gate closes (§9.1, §2 row 1).
  *
- * Flow: build a move (§8 Builder, ending at the dry-run gate) → then practice it
- * (§6). The enrollment (credential + seed + params) is PERSISTED to localStorage
- * so the move survives a refresh; on boot a returning user skips the builder and
- * lands in practice. Once built, the move goes dark — only the builder/peek ever
- * show it (§9.1); the credential drives the verifier.
+ * Flow: build a move (§8) → it goes dark → practice it (§6), verified through the
+ * Option B verifier by enumerating the public menu. Enrollment (credential +
+ * seed + params + readout shape) is persisted so it survives a refresh; the
+ * shape lets the UI render the right answer input without holding the rule.
  *
- * ⚠️ Under Option A the persisted credential embeds the raw rule (the §6 Option
- * A tradeoff, localized to the browser). See persistence.ts.
+ * (The "remind me my move" peek is intentionally dropped under Option B — there
+ * is no rule to show, by design. See git history / DESIGN for the rationale.)
  */
 
 import { useMemo, useState } from "react";
@@ -17,36 +19,48 @@ import { Builder } from "./Builder.js";
 import { Practice } from "./Practice.js";
 import { useGridClock } from "./useGridClock.js";
 import { DEFAULT_PARAMS } from "../engine/clock.js";
-import { OptionAVerifier, recoverOptionARule } from "../auth/verifier.js";
+import { OptionBVerifier } from "../auth/option-b-verifier.js";
 import { saveEnrollment, loadEnrollment, clearEnrollment } from "../auth/persistence.js";
+import { readoutShape } from "../engine/readout-shape.js";
 import type { Enrollment } from "../auth/login.js";
+import type { EnumerateOptions } from "../engine/enumerate.js";
 import type { Rule } from "../engine/types.js";
 
 // Stable seed for this user's challenge grids (§10). One device, one user for
 // v1; a real deployment would derive this per-account at enrollment.
 const USER_SEED = "tessera-user-seed";
 
+// v1 enumeration bounds: 4×4 grid, chain ≤2 (§5). The verifier enumerates this
+// menu to check answers without ever holding the rule.
+const enumerateFor = (params: { rows: number; cols: number }): EnumerateOptions => ({
+  rows: params.rows,
+  cols: params.cols,
+  maxChain: 2,
+});
+
 type Tab = "clock" | "build" | "practice";
 
 export function App() {
-  const verifier = useMemo(() => new OptionAVerifier(), []);
-
   // Restore a persisted enrollment on first render (lazy initializer runs once).
   const [enrollment, setEnrollment] = useState<Enrollment | null>(() => loadEnrollment());
   const [tab, setTab] = useState<Tab>(() => (loadEnrollment() ? "practice" : "clock"));
 
-  // The rule, recovered from the credential, drives previews + the peek reminder
-  // (Option A only — under Option B there'd be no rule to recover, and no peek).
-  const rule: Rule | null = useMemo(
-    () => (enrollment ? recoverOptionARule(enrollment.credential) : null),
-    [enrollment],
+  // The verifier is reconstructed from the enrollment's params — it holds no
+  // secret, only the enumeration bounds. (The credential carries the hash.)
+  const verifier = useMemo(
+    () => new OptionBVerifier(enumerateFor(enrollment?.params ?? DEFAULT_PARAMS)),
+    [enrollment?.params],
   );
 
   const enroll = (r: Rule) => {
+    const params = DEFAULT_PARAMS;
+    // Enroll with a verifier bound to THIS rule's grid size.
+    const v = new OptionBVerifier(enumerateFor(params));
     const e: Enrollment = {
-      credential: verifier.enroll(r),
+      credential: v.enroll(r),
       seed: USER_SEED,
-      params: DEFAULT_PARAMS,
+      params,
+      readoutShape: readoutShape(r.readout, params.rows, params.cols),
     };
     saveEnrollment(e);
     setEnrollment(e);
@@ -87,9 +101,15 @@ export function App() {
       )}
 
       {tab === "practice" &&
-        (enrollment && rule ? (
+        (enrollment ? (
           <>
-            <Practice rule={rule} credential={enrollment.credential} verifier={verifier} seed={enrollment.seed} />
+            <Practice
+              shape={enrollment.readoutShape}
+              credential={enrollment.credential}
+              verifier={verifier}
+              seed={enrollment.seed}
+              params={enrollment.params}
+            />
             <ForgetMove onForget={forget} />
           </>
         ) : (

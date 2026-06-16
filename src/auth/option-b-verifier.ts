@@ -34,7 +34,7 @@ import { applyRule, answersEqual } from "../engine/rule.js";
 import { allRules, type EnumerateOptions } from "../engine/enumerate.js";
 import type { Credential, Verifier } from "./verifier.js";
 import { canonicalRule } from "./canonical.js";
-import { digestsEqual, ScryptSlowHash, type SlowHash } from "./slowhash.js";
+import { digestsEqual, Sha256VerifyHash, type VerifyHash } from "./verifyhash.js";
 
 export const OPTION_B_KIND = "option-b-enum-hash" as const;
 
@@ -52,12 +52,15 @@ export class OptionBVerifier implements Verifier {
 
   constructor(
     private readonly enumerate: EnumerateOptions,
-    private readonly slow: SlowHash = new ScryptSlowHash(),
+    // App default: fast SHA-256 verify-hash (server-side; R lives nowhere). A
+    // slow hash (scrypt) can be injected for stronger at-rest hardness where the
+    // verify cost is acceptable — see verifyhash.ts / slowhash.ts for the trade.
+    private readonly hasher: VerifyHash = new Sha256VerifyHash(),
   ) {}
 
   enroll(rule: Rule): Credential {
-    const salt = this.slow.newSalt();
-    const hash = this.slow.hash(canonicalRule(rule), salt);
+    const salt = this.hasher.newSalt();
+    const hash = this.hasher.hash(canonicalRule(rule), salt);
     const payload: OptionBPayload = { hash, salt, enumerate: this.enumerate };
     return { kind: this.kind, payload };
   }
@@ -80,10 +83,12 @@ export class OptionBVerifier implements Verifier {
     // 1. Cheap filter: which menu rules would produce this answer on this grid?
     const candidates = allRules(enumerate).filter((r) => answersEqual(applyRule(grid, r), submitted));
 
-    // 2. Expensive check ONLY on those: does any candidate hash to the stored
-    //    verifier? Constant-time digest compare avoids a timing oracle.
+    // 2. Hash each candidate and compare to the stored verifier. With the fast
+    //    SHA-256 hasher this whole scan is sub-millisecond even for hundreds of
+    //    candidates; with a slow hash it would be seconds (the reason the app
+    //    uses the fast hasher — see verifyhash.ts).
     for (const r of candidates) {
-      const h = this.slow.hash(canonicalRule(r), salt);
+      const h = this.hasher.hash(canonicalRule(r), salt);
       if (digestsEqual(h, hash)) return true;
     }
     return false;

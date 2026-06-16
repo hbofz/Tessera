@@ -122,6 +122,8 @@ R  =  SELECT  →  TRANSFORM (×1–2)  →  READOUT
 
 **Cost of B:** `R` is low-entropy, so a leaked verifier is offline-brute-forceable. Defenses: a deliberately slow hash (Argon2/scrypt) and the largest sensible rule space. This is the same brute-force concern as §7's blind-guessing, surfacing at the verifier.
 
+**App-wiring decision (the live demo now runs Option B).** B-enum verifies by enumerating the menu and hashing each candidate. With a *slow* hash this is unusable: a `count` readout has hundreds of candidates × ~68ms scrypt ≈ **17s per login**. A deeper constraint also surfaced: a fast *client-side* proof would require the client to hold `R`, which breaks §2 row 1 ("the move isn't on the phone"). The only design that is simultaneously **server-safe, phone-safe, and fast** in this UX is **server-side enumeration with a FAST hash**. So the app uses SHA-256 (`verifyhash.ts`), making a worst-case verify ~43ms. The accepted tradeoff: a *leaked verifier* becomes cheaply brute-forceable (R is low-entropy). Mitigations: login rate-limiting (§6, present) and an optional server-held **pepper** (keyed hash) so a DB-only breach that misses the pepper can't brute-force at all. The scrypt path (`slowhash.ts`) is retained for higher-hardness deployments where verify latency is acceptable. The "peek the move" practice reminder is **dropped** under Option B — there is no rule on the device to show, by design.
+
 > **This is the single most important technical decision in the project.** It determines whether "the secret never leaves your head" is literally true. The enumerable-menu constraint (§5) is what makes B possible — a Turing-complete rule language would make `R` un-hashable and the strength meter unsimulable. Keep the rule space finite.
 
 ---

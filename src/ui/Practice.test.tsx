@@ -6,6 +6,7 @@ import { OptionAVerifier } from "../auth/verifier.js";
 import { gridAtTick, DEFAULT_PARAMS } from "../engine/clock.js";
 import { applyRule } from "../engine/rule.js";
 import { formatGrid } from "../engine/grid.js";
+import { readoutShape } from "../engine/readout-shape.js";
 import type { Rule } from "../engine/types.js";
 
 const SEED = "practice-test-seed";
@@ -15,6 +16,7 @@ const RULE: Rule = {
   transforms: [{ type: "shift", dir: "down" }],
   readout: { type: "count", color: "R" },
 };
+const SHAPE = readoutShape(RULE.readout, DEFAULT_PARAMS.rows, DEFAULT_PARAMS.cols);
 
 const verifier = new OptionAVerifier();
 const credential = verifier.enroll(RULE);
@@ -42,7 +44,7 @@ async function stepCountTo(user: ReturnType<typeof userEvent.setup>, n: number) 
 describe("Practice mode (§6)", () => {
   it("correct answer → 'Correct' and streak increments", async () => {
     const user = userEvent.setup();
-    render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
+    render(<Practice shape={SHAPE} credential={credential} verifier={verifier} seed={SEED} />);
 
     await stepCountTo(user, honestCountForRound(0));
     await user.click(screen.getByRole("button", { name: "Check" }));
@@ -53,7 +55,7 @@ describe("Practice mode (§6)", () => {
 
   it("wrong answer → 'Not quite' and streak stays 0", async () => {
     const user = userEvent.setup();
-    render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
+    render(<Practice shape={SHAPE} credential={credential} verifier={verifier} seed={SEED} />);
 
     await stepCountTo(user, failingCountForRound(0));
     await user.click(screen.getByRole("button", { name: "Check" }));
@@ -63,7 +65,7 @@ describe("Practice mode (§6)", () => {
 
   it("advances to a FRESH grid after each answer (regression: grid was frozen)", async () => {
     const user = userEvent.setup();
-    render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
+    render(<Practice shape={SHAPE} credential={credential} verifier={verifier} seed={SEED} />);
 
     const gridEl = () => screen.getByLabelText("practice challenge grid");
     // Snapshot the grid's accessible content before and after an answer. We use
@@ -92,36 +94,16 @@ describe("Practice mode (§6)", () => {
     if (r0 === r1) return; // vacuous if they coincide
 
     const user = userEvent.setup();
-    render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
+    render(<Practice shape={SHAPE} credential={credential} verifier={verifier} seed={SEED} />);
     await stepCountTo(user, r1);
     await user.click(screen.getByRole("button", { name: "Check" }));
     expect(screen.getByTestId("feedback")).toHaveTextContent("Not quite");
   });
 
-  it("offers the opt-in move reminder only AFTER a wrong answer", async () => {
-    const user = userEvent.setup();
-    render(<Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />);
-
-    // Not offered at the start.
-    expect(screen.queryByRole("button", { name: /Remind me my move/ })).toBeNull();
-
-    // A correct answer does NOT offer it.
-    await stepCountTo(user, honestCountForRound(0));
-    await user.click(screen.getByRole("button", { name: "Check" }));
-    expect(screen.queryByRole("button", { name: /Remind me my move/ })).toBeNull();
-
-    // A wrong answer offers it — still as an opt-in button, not a revealed move.
-    await stepCountTo(user, failingCountForRound(1));
-    await user.click(screen.getByRole("button", { name: "Check" }));
-    expect(screen.getByRole("button", { name: /Remind me my move/ })).toBeInTheDocument();
-    // The move itself is still not shown (the feedback never leaks it, §9.1).
-    expect(screen.queryByText(/you'd tap/i)).toBeNull();
-  });
-
   it("NEVER reveals the rule or the expected answer (§9.1)", async () => {
     const user = userEvent.setup();
     const { container } = render(
-      <Practice rule={RULE} credential={credential} verifier={verifier} seed={SEED} />,
+      <Practice shape={SHAPE} credential={credential} verifier={verifier} seed={SEED} />,
     );
 
     await stepCountTo(user, failingCountForRound(0));

@@ -29,6 +29,7 @@
 
 import type { Answer, Grid } from "../engine/types.js";
 import type { GridParams } from "../engine/clock.js";
+import type { ReadoutShape } from "../engine/readout-shape.js";
 import { gridAtTick, tickForTime, graceTicks, defaultAccept } from "../engine/clock.js";
 import type { AcceptGrid } from "../engine/clock.js";
 import type { Credential, Verifier } from "./verifier.js";
@@ -50,6 +51,13 @@ export interface Enrollment {
   readonly credential: Credential;
   readonly seed: string;
   readonly params: GridParams;
+  /**
+   * The answer SHAPE (cell / count / line + dimensions) the client must render.
+   * Not secret enough to matter (it's "what kind of answer you tap"), and the
+   * UI genuinely needs it — under Option B the client has no rule to derive it
+   * from. The full rule is NOT here (§9.1/§9.2): only the readout's shape.
+   */
+  readonly readoutShape: ReadoutShape;
 }
 
 export type LoginOutcome =
