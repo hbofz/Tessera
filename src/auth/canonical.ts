@@ -25,7 +25,17 @@ function canonicalJson(value: unknown): string {
   return `{${entries.join(",")}}`;
 }
 
-/** The canonical string form of a rule — the input to the slow hash (§6). */
+/**
+ * The canonical string form of a rule — the input to the slow hash (§6).
+ *
+ * SOUNDNESS NOTE: collision-freedom here relies on Rule fields being enums,
+ * fixed keys, and numbers (never free-form user strings). Values are emitted via
+ * JSON.stringify (correct escaping), and keys are fixed identifiers, so two
+ * different rules cannot canonicalize to the same string. If the rule vocabulary
+ * ever gains an arbitrary-string field, revisit this — a value containing the
+ * structural delimiters could otherwise create an ambiguous encoding. (The §9.4
+ * finite-menu invariant keeps fields enumerable, which is what protects this.)
+ */
 export function canonicalRule(rule: Rule): string {
   return canonicalJson(rule);
 }
