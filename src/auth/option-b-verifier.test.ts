@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { OptionBVerifier, OPTION_B_KIND } from "./option-b-verifier.js";
 import { canonicalRule } from "./canonical.js";
-import type { SlowHash } from "./slowhash.js";
-import { ScryptSlowHash } from "./slowhash.js";
+import type { VerifyHash } from "./verifyhash.js";
+import { Sha256VerifyHash } from "./verifyhash.js";
 import { gridAtTick, DEFAULT_PARAMS } from "../engine/clock.js";
 import { applyRule } from "../engine/rule.js";
 import type { EnumerateOptions } from "../engine/enumerate.js";
@@ -17,7 +17,7 @@ import {
 // cost. It must honor the SlowHash contract: deterministic given (input, salt)
 // AND return a fixed-length HEX digest (digestsEqual compares hex). We use a
 // simple FNV-1a folded to 32 hex chars — collision-resistant enough for tests.
-function fastHash(): SlowHash {
+function fastHash(): VerifyHash {
   const fnvHex = (s: string): string => {
     let h = 0x811c9dc5 >>> 0;
     for (let i = 0; i < s.length; i++) {
@@ -142,6 +142,7 @@ describe("OptionBVerifier — drop-in for the login flow (§6 seam)", () => {
       credential: v.enroll(RULE),
       seed: "login-b",
       params: DEFAULT_PARAMS,
+      readoutShape: { kind: "count", max: 16 },
     };
     const state = newLoginState();
 
@@ -157,10 +158,10 @@ describe("OptionBVerifier — drop-in for the login flow (§6 seam)", () => {
   });
 });
 
-describe("OptionBVerifier — real scrypt smoke test", () => {
-  it("enrolls and verifies with the actual slow hash", () => {
+describe("OptionBVerifier — real SHA-256 smoke test", () => {
+  it("enrolls and verifies with the default SHA-256 hasher", () => {
     // One real-scrypt round-trip to prove the default path works end to end.
-    const v = new OptionBVerifier(ENUM, new ScryptSlowHash());
+    const v = new OptionBVerifier(ENUM, new Sha256VerifyHash());
     const cred = v.enroll(RULE);
     const grid = gridAtTick("scrypt", 3);
     const a = applyRule(grid, RULE);
