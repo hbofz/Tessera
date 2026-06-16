@@ -68,6 +68,15 @@ export class OptionBVerifier implements Verifier {
     }
     const { hash, salt, enumerate } = credential.payload as OptionBPayload;
 
+    // The credential's enumerate bounds drive allRules(), whose size grows fast
+    // with grid dimensions and chain length. Treat them as UNTRUSTED input — a
+    // breach-and-tamper attacker (the exact threat Option B defends) could set
+    // huge dimensions to make every login a massive enumeration + slow-hash
+    // storm (amplification DoS). Reject anything outside sane, self-consistent
+    // bounds. We also require the credential's bounds to match the grid it's
+    // being verified against, so a swollen menu can't be smuggled in.
+    if (!boundsOk(enumerate, grid)) return false;
+
     // 1. Cheap filter: which menu rules would produce this answer on this grid?
     const candidates = allRules(enumerate).filter((r) => answersEqual(applyRule(grid, r), submitted));
 
@@ -79,4 +88,23 @@ export class OptionBVerifier implements Verifier {
     }
     return false;
   }
+}
+
+/** Hard cap on grid dimensions the verifier will enumerate over. The §4b grid
+ *  is 4×4 by default and a difficulty knob may raise it, but well below this. */
+const MAX_DIM = 8;
+
+/** Validate the credential's enumerate bounds (untrusted): sane, self-consistent
+ *  with the grid being verified, and within the v1 chain cap. Returns false (not
+ *  throw) so a tampered credential fails the login rather than crashing it. */
+function boundsOk(enumerate: EnumerateOptions, grid: Grid): boolean {
+  const { rows, cols, maxChain } = enumerate;
+  if (!Number.isInteger(rows) || !Number.isInteger(cols) || !Number.isInteger(maxChain)) return false;
+  if (rows < 1 || cols < 1 || rows > MAX_DIM || cols > MAX_DIM) return false;
+  if (maxChain < 1 || maxChain > 2) return false; // v1 chain cap (§5)
+  // The menu must be enumerated over the SAME shape as the grid being checked,
+  // or readouts/regions wouldn't line up anyway — and it blocks smuggling a
+  // larger menu than the grid warrants.
+  if (rows !== grid.rows || cols !== grid.cols) return false;
+  return true;
 }

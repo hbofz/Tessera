@@ -96,6 +96,45 @@ describe("OptionBVerifier — verification", () => {
   });
 });
 
+describe("OptionBVerifier — rejects tampered enumerate bounds (DoS guard)", () => {
+  function tamper(enumerate: Partial<EnumerateOptions>) {
+    const v = new OptionBVerifier(ENUM, fastHash());
+    const cred = v.enroll(RULE);
+    const grid = gridAtTick("s", 0);
+    const correct = applyRule(grid, RULE);
+    // Mutate the stored bounds as a breach-and-tamper attacker would.
+    const payload = cred.payload as { hash: string; salt: string; enumerate: EnumerateOptions };
+    const bad = {
+      kind: cred.kind,
+      payload: { ...payload, enumerate: { ...payload.enumerate, ...enumerate } },
+    };
+    return v.verify(bad, grid, correct, 0);
+  }
+
+  it("fails (not throws) when rows/cols are blown up beyond the cap", () => {
+    expect(tamper({ rows: 1000, cols: 1000 })).toBe(false);
+  });
+
+  it("fails when bounds don't match the grid being verified", () => {
+    expect(tamper({ rows: 3, cols: 3 })).toBe(false); // grid is 4x4
+  });
+
+  it("fails when maxChain exceeds the v1 cap", () => {
+    expect(tamper({ maxChain: 5 })).toBe(false);
+  });
+
+  it("fails on non-integer bounds", () => {
+    expect(tamper({ rows: 4.5 })).toBe(false);
+  });
+
+  it("still PASSES with untampered, matching bounds", () => {
+    const v = new OptionBVerifier(ENUM, fastHash());
+    const cred = v.enroll(RULE);
+    const grid = gridAtTick("s", 0);
+    expect(v.verify(cred, grid, applyRule(grid, RULE), 0)).toBe(true);
+  });
+});
+
 describe("OptionBVerifier — drop-in for the login flow (§6 seam)", () => {
   it("attemptLogin works unchanged with the Option B verifier", () => {
     const v = new OptionBVerifier(ENUM, fastHash());

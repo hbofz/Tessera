@@ -38,8 +38,13 @@ export class ScryptSlowHash implements SlowHash {
 
   hash(input: string, saltHex: string): string {
     const salt = Buffer.from(saltHex, "hex");
-    // maxmem must accommodate N*r*128 bytes; bump it for N=2^15.
-    const maxmem = 128 * this.params.N * this.params.r * 2;
+    // scrypt's working-set requirement is 128 * N * r bytes. We give a generous
+    // fixed multiple so a parameter bump can't push maxmem *below* the
+    // requirement (which would make scryptSync throw on every call → all logins
+    // fail closed). 128*N*r*4 = 4× headroom over the actual need, plus a 1 MiB
+    // floor for tiny test params.
+    const required = 128 * this.params.N * this.params.r;
+    const maxmem = Math.max(required * 4, 1 << 20);
     const out = scryptSync(input, salt, this.params.keyLen, {
       N: this.params.N,
       r: this.params.r,
