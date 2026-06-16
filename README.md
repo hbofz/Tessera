@@ -6,7 +6,7 @@ A TOTP-style second factor where the rolling secret is a **move you perform in y
 
 ## Status
 
-The **pure, testable core** is built and unit-tested (no UI yet — by design, per §11).
+The **pure, testable core** is complete. The **frontend** (React + Vite) is now scaffolded, starting with the colorblind-safe grid renderer.
 
 | §11 step | Component | Module | Status |
 |---|---|---|---|
@@ -14,8 +14,9 @@ The **pure, testable core** is built and unit-tested (no UI yet — by design, p
 | 2 | Rule engine — `R(C) → answer` | `src/engine/rule.ts` | ✅ |
 | 4 | Login / verify loop — grace window, rate limit, replay defense | `src/auth/` | ✅ |
 | 5 | Strength meter — blind-guess entropy + Monte-Carlo elimination | `src/engine/strength.ts` | ✅ |
-| 3 | Builder wizard (§8) | — | ⬜ needs frontend |
-| 6 | Practice mode | — | ⬜ needs frontend |
+| — | Grid renderer — colorblind-safe (hue + shape), live ticking | `src/ui/GridView.tsx` | ✅ |
+| 3 | Builder wizard (§8) | `src/ui/` | ⬜ next |
+| 6 | Practice mode | `src/ui/` | ⬜ next |
 
 ## Layout
 
@@ -32,6 +33,12 @@ src/
   auth/          server-side verification (depends on engine)
     verifier.ts    the §6 seam — Option A now, swappable to Option B
     login.ts       attemptLogin: grace window + rate limit + replay defense
+  ui/            React frontend (Vite)
+    palette.ts     colorblind-safe styles (Okabe–Ito hue + redundant shape)
+    GridView.tsx   the reusable grid renderer
+    useGridClock.ts  hook: subscribe to the rolling C(t)
+    App.tsx        harness showing the live ticking grid (builder/practice next)
+index.html       Vite entry
 ```
 
 ## Key decisions baked into the code (don't silently revert — see DESIGN.md §9)
@@ -46,6 +53,8 @@ src/
 
 ```sh
 npm install
-npm test          # vitest run
+npm run dev       # vite dev server — see the live ticking grid
+npm test          # vitest run (engine + auth + ui)
 npm run typecheck # strict tsc
+npm run build     # typecheck + production bundle
 ```
