@@ -9,6 +9,7 @@ coverage/
 supabase/.temp/
 supabase/.branches/
 
-# Local-only env overrides (the committed .env holds PUBLIC keys only)
+# Env: commit only .env.example (a template); keep the real .env local.
+.env
 .env.local
 .env.*.local
