@@ -9,9 +9,11 @@
  * It NEVER renders R, a before→after preview, or "the answer was X". A wrong
  * attempt shows only "not quite" — the user must recall the move, not read it.
  *
- * Forgiveness (§3, §9.5): a tap is checked against the grace window (t-1,t,t+1)
- * so a slip across a rollover isn't punished — forgiveness in the time domain,
- * never fuzzy answer matching.
+ * Each answer (right OR wrong) advances to a fresh practice grid — this is a
+ * tested regression guard (Practice.test.tsx "grid was frozen"): practice is
+ * about drilling on NEW puzzles, and a frozen grid would let the user brute the
+ * same one. The fresh grid animates in so the change is obvious. Practice grids
+ * are public, so a per-attempt stream leaks nothing.
  */
 
 import { useMemo, useState } from "react";
@@ -19,15 +21,11 @@ import type { Answer } from "../engine/types.js";
 import type { GridParams } from "../engine/clock.js";
 import { DEFAULT_PARAMS, gridAtTick } from "../engine/clock.js";
 import type { ReadoutShape } from "../engine/readout-shape.js";
-import type { Verifier } from "../auth/verifier.js";
+import type { Verifier, Credential } from "../auth/verifier.js";
 import { GridView } from "./GridView.js";
 import { AnswerInput } from "./AnswerInput.js";
-import type { Credential } from "../auth/verifier.js";
 
 export interface PracticeProps {
-  /** The answer SHAPE the UI must render (cell/count/line). NOT the rule — under
-   *  Option B the client doesn't have the rule at all; verification goes through
-   *  the verifier. The shape is the minimum the input needs (§9.1). */
   readonly shape: ReadoutShape;
   readonly credential: Credential;
   readonly verifier: Verifier;
@@ -37,31 +35,45 @@ export interface PracticeProps {
 
 type Feedback = { kind: "correct" } | { kind: "wrong" } | null;
 
+const BEST_KEY = "tessera.practice.best";
+
+function loadBest(): number {
+  try {
+    const n = Number(localStorage.getItem(BEST_KEY));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+function saveBest(n: number): void {
+  try {
+    localStorage.setItem(BEST_KEY, String(n));
+  } catch {
+    // best-effort
+  }
+}
+
 export function Practice({ shape, credential, verifier, seed, params = DEFAULT_PARAMS }: PracticeProps) {
   const [streak, setStreak] = useState(0);
-  const [best, setBest] = useState(0);
+  const [best, setBest] = useState(() => loadBest());
   const [feedback, setFeedback] = useState<Feedback>(null);
-  // Each round draws a FRESH practice grid. Practice is about drilling the move
-  // on new puzzles, so the grid advances per attempt — independent of the wall
-  // clock (the clock only rolls every period, which would freeze practice on one
-  // grid between rollovers). Practice grids are public, so this leaks nothing.
   const [round, setRound] = useState(0);
 
-  const practiceTick = round; // a dedicated, non-clock stream of sample grids
   const grid = useMemo(
-    () => gridAtTick(`${seed}#practice`, practiceTick, params),
-    [seed, practiceTick, params],
+    () => gridAtTick(`${seed}#practice`, round, params),
+    [seed, round, params],
   );
 
   const check = (answer: Answer) => {
-    // Check against THIS round's grid directly. No clock grace window is needed:
-    // the practice grid doesn't roll out from under the user mid-attempt.
-    const matched = verifier.verify(credential, grid, answer, practiceTick);
-
+    const matched = verifier.verify(credential, grid, answer, round);
     if (matched) {
       setStreak((s) => {
         const ns = s + 1;
-        setBest((b) => Math.max(b, ns));
+        setBest((b) => {
+          const nb = Math.max(b, ns);
+          if (nb !== b) saveBest(nb);
+          return nb;
+        });
         return ns;
       });
       setFeedback({ kind: "correct" });
@@ -69,24 +81,23 @@ export function Practice({ shape, credential, verifier, seed, params = DEFAULT_P
       setStreak(0);
       setFeedback({ kind: "wrong" });
     }
-    // Advance to a fresh grid for the next attempt.
     setRound((r) => r + 1);
   };
 
   return (
-    <section
-      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: 16 }}
-    >
-      <header style={{ textAlign: "center" }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Practice</h2>
-        <p style={{ margin: "4px 0 0", color: "#666", fontSize: 14 }}>
+    <section className="flex flex-col items-center gap-5 w-full">
+      <header className="text-center">
+        <h2 className="m-0 text-xl font-semibold">Practice</h2>
+        <p className="mt-1 mb-0 text-text-muted text-sm">
           Perform your move in your head, then tap the answer.
         </p>
       </header>
 
       <StreakBadge streak={streak} best={best} />
 
-      <GridView grid={grid} cellSize={56} ariaLabel="practice challenge grid" />
+      <div className="w-full max-w-[300px]">
+        <GridView grid={grid} ariaLabel="practice challenge grid" />
+      </div>
 
       <AnswerInput key={round} shape={shape} onSubmit={check} />
 
@@ -96,38 +107,33 @@ export function Practice({ shape, credential, verifier, seed, params = DEFAULT_P
 }
 
 function StreakBadge({ streak, best }: { streak: number; best: number }) {
-  // Not a live region — the feedback banner is the single announced status, so
-  // queries for role="status" resolve unambiguously to the PASS/FAIL message.
   return (
-    <div style={{ display: "flex", gap: 16, fontSize: 14, color: "#444" }}>
-      <span>
-        🔥 streak: <strong>{streak}</strong>
+    <div className="flex gap-3 text-sm">
+      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-pill bg-surface-2 border border-border">
+        <span aria-hidden="true">🔥</span>
+        <span className="text-text-muted">
+          streak: <strong className="text-text tabular-nums">{streak}</strong>
+        </span>
       </span>
-      <span>
-        best: <strong>{best}</strong>
+      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-pill bg-surface-2 border border-border text-text-muted">
+        best: <strong className="text-text tabular-nums">{best}</strong>
       </span>
     </div>
   );
 }
 
 function FeedbackBanner({ feedback }: { feedback: Feedback }) {
-  if (!feedback) return <div style={{ minHeight: 28 }} aria-live="assertive" />;
+  if (!feedback) return <div className="min-h-7" aria-live="assertive" />;
   const correct = feedback.kind === "correct";
   return (
     <div
       role="status"
       data-testid="feedback"
       aria-live="assertive"
-      style={{
-        minHeight: 28,
-        fontSize: 16,
-        fontWeight: 600,
-        color: correct ? "#009E73" : "#D55E00",
-      }}
+      className={"min-h-7 text-base font-semibold " + (correct ? "text-success" : "text-danger")}
     >
       {/* Only PASS/FAIL — never the expected answer (§9.1). */}
       {correct ? "Correct ✓" : "Not quite — try the next grid"}
     </div>
   );
 }
-

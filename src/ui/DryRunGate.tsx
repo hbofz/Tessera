@@ -48,7 +48,8 @@ export function DryRunGate({
   const [lastResult, setLastResult] = useState<"pass" | "fail" | null>(null);
 
   // Distinct fresh grids for the gate, drawn from a dedicated offset so they
-  // don't coincide with the preview samples the user just saw.
+  // don't coincide with the preview samples the user just saw. (The 1000 offset
+  // is load-bearing for tests — keep it.)
   const grid = useMemo(
     () => gridAtTick(`${sampleSeed}#dryrun`, 1000 + index, params),
     [sampleSeed, index, params],
@@ -65,7 +66,6 @@ export function DryRunGate({
     setCorrect(newCorrect);
 
     if (newIndex >= rounds) {
-      // Decide once all rounds are done.
       setTimeout(() => (newCorrect >= needed ? onPass() : onFail()), 700);
     } else {
       setTimeout(() => {
@@ -78,45 +78,57 @@ export function DryRunGate({
   const remaining = rounds - index;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-      <p style={{ color: "#666", fontSize: 14, margin: 0, textAlign: "center" }}>
-        From memory now — no hints. Get {needed} of {rounds} right to lock it in.
+    <div className="flex flex-col items-center gap-4 w-full">
+      <p className="text-sm text-text-muted m-0 text-center max-w-[42ch] leading-relaxed">
+        From memory now — no hints. Get <strong className="text-text">{needed} of {rounds}</strong>{" "}
+        right to lock it in.
       </p>
 
-      <ProgressDots rounds={rounds} index={index} />
+      <ProgressDots rounds={rounds} index={index} correct={correct} />
 
-      <GridView grid={grid} cellSize={56} ariaLabel={`dry-run grid ${index + 1} of ${rounds}`} />
+      <div className="w-full max-w-[300px]">
+        <GridView grid={grid} ariaLabel={`dry-run grid ${index + 1} of ${rounds}`} />
+      </div>
 
       {/* key={index} remounts the input each round, clearing the prior pick. */}
       <AnswerInput key={index} shape={shape} onSubmit={submit} disabled={lastResult !== null} />
 
-      <div role="status" data-testid="dryrun-feedback" aria-live="assertive" style={{ minHeight: 24, fontWeight: 600 }}>
-        {/* PASS/FAIL only — never the expected answer (§9.1). */}
-        {lastResult === "pass" && <span style={{ color: "#009E73" }}>Correct ✓</span>}
-        {lastResult === "fail" && <span style={{ color: "#D55E00" }}>Not that one</span>}
+      <div
+        role="status"
+        data-testid="dryrun-feedback"
+        aria-live="assertive"
+        className="min-h-6 font-semibold"
+      >
+        {lastResult === "pass" && <span className="text-success">Correct ✓</span>}
+        {lastResult === "fail" && <span className="text-danger">Not that one</span>}
       </div>
 
-      <small style={{ color: "#aaa" }}>
+      <small className="text-text-faint tabular-nums">
         {correct} correct · {remaining} to go
       </small>
     </div>
   );
 }
 
-function ProgressDots({ rounds, index }: { rounds: number; index: number }) {
+function ProgressDots({ rounds, index, correct }: { rounds: number; index: number; correct: number }) {
   return (
-    <div aria-hidden="true" style={{ display: "flex", gap: 8 }}>
-      {Array.from({ length: rounds }, (_, i) => (
-        <span
-          key={i}
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 999,
-            background: i < index ? "#111" : "#ddd",
-          }}
-        />
-      ))}
+    <div
+      role="img"
+      aria-label={`${correct} of ${index} attempted rounds correct`}
+      className="flex gap-2"
+    >
+      {Array.from({ length: rounds }, (_, i) => {
+        const done = i < index;
+        return (
+          <span
+            key={i}
+            className={
+              "w-2.5 h-2.5 rounded-pill transition " +
+              (done ? "bg-ink" : "bg-surface-2 border border-border")
+            }
+          />
+        );
+      })}
     </div>
   );
 }

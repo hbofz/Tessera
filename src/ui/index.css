@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+/*
+ * Tessera design tokens (DESIGN.md §3 "calm, not stressful"; §4b accessibility).
+ *
+ * Two layers of color:
+ *   1. CHROME — calm, low-contrast neutrals + a few semantic accents. Themeable
+ *      (light/dark). Defined here. Used by all app furniture (cards, buttons…).
+ *   2. THE GRID / ANSWERS — the Okabe–Ito colorblind-safe hues live ONLY in
+ *      src/ui/palette.ts and are reserved for cells + answer chips, so the grid
+ *      is the one place color carries meaning (§4b). Tokens here must NOT
+ *      duplicate or override those.
+ *
+ * `@custom-variant dark` lets `dark:` utilities respond to [data-theme="dark"]
+ * on <html> (set by the ThemeToggle), instead of the OS-only default.
+ */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  /* Type — one restrained scale. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Radii — soft, generous (the "premium" feel). */
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.25rem;
+  --radius-pill: 999px;
+
+  /* Semantic chrome colors (light theme values; dark overridden below). */
+  --color-bg: #fbfbfa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f5f5f4;
+  --color-border: #e7e5e4;
+  --color-text: #1c1a18;
+  --color-text-muted: #6b6660;
+  --color-text-faint: #a8a29e;
+  --color-accent: #0072b2; /* Okabe–Ito blue, doubles as the link/accent */
+  --color-accent-contrast: #ffffff;
+  --color-success: #009e73; /* Okabe–Ito green */
+  --color-danger: #d55e00; /* Okabe–Ito vermillion */
+  --color-ring: #0072b2;
+
+  /* The "ink" primary button — near-black in light, near-white in dark. */
+  --color-ink: #1c1a18;
+  --color-ink-contrast: #ffffff;
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 24px rgba(0, 0, 0, 0.05);
+  --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.06), 0 12px 36px rgba(0, 0, 0, 0.08);
+}
+
+/* Dark theme: re-point the same semantic tokens. The grid hues are unchanged
+   (they stay vivid on dark too — Okabe–Ito holds up on both). */
+[data-theme="dark"] {
+  --color-bg: #14110f;
+  --color-surface: #1d1a17;
+  --color-surface-2: #26221e;
+  --color-border: #332e29;
+  --color-text: #f4f1ec;
+  --color-text-muted: #a89f95;
+  --color-text-faint: #6b6258;
+  --color-accent: #4ba3d6;
+  --color-accent-contrast: #08121a;
+  --color-success: #34c79b;
+  --color-danger: #f2853f;
+  --color-ring: #4ba3d6;
+  --color-ink: #f4f1ec;
+  --color-ink-contrast: #1c1a18;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+  }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--color-bg);
+    color: var(--color-text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+  #root {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+  }
+  /* A single, consistent focus ring for keyboard users everywhere. */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@keyframes tessera-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes tessera-pop {
+  0% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes tessera-rise {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

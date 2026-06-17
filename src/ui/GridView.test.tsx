@@ -16,10 +16,12 @@ describe("GridView", () => {
     expect(screen.getByLabelText("empty")).toBeInTheDocument();
   });
 
-  it("exposes the whole grid as a labeled image region", () => {
+  it("exposes the whole grid as a labeled region (a group of cells, not a nested image)", () => {
     const grid = parseGrid("RG/B_");
     render(<GridView grid={grid} ariaLabel="practice grid" />);
-    expect(screen.getByRole("img", { name: "practice grid" })).toBeInTheDocument();
+    // The container is a labelled group; each cell is its own image inside it.
+    // (A nested role="img" parent would hide the cells from assistive tech.)
+    expect(screen.getByRole("group", { name: "practice grid" })).toBeInTheDocument();
   });
 
   it("marks highlighted cells in their accessible label", () => {

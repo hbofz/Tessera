@@ -6,27 +6,75 @@
  * anon key; real security lives in RLS + the Edge Function (DESIGN.md §6).
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Answer, Rule } from "../engine/types.js";
 import type { GridParams } from "../engine/clock.js";
 import type { ReadoutShape } from "../engine/readout-shape.js";
 import type { Credential } from "../auth/verifier.js";
 import type { Grid } from "../engine/types.js";
 
-const URL = import.meta.env.VITE_SUPABASE_URL as string;
-const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const supabase = createClient(URL, ANON);
+/**
+ * Is the Supabase backend configured? The two-device flow needs `.env`; the solo
+ * sandbox does NOT. Importing this module must therefore NEVER throw when env is
+ * missing — otherwise solo mode (and the whole app) crashes on a fresh checkout.
+ * The UI calls this to gate the two-device modes instead of crashing.
+ */
+export function isBackendConfigured(): boolean {
+  return Boolean(URL && ANON && !URL.includes("YOUR-PROJECT-REF"));
+}
 
-const FN = `${URL}/functions/v1/verify`;
+// The client is created LAZILY on first use (not at module load), so a missing
+// `.env` can't crash import-time. Solo mode never calls anything that touches it.
+let _client: SupabaseClient | null = null;
+function client(): SupabaseClient {
+  if (!isBackendConfigured()) {
+    throw new BackendNotConfiguredError();
+  }
+  if (!_client) _client = createClient(URL!, ANON!);
+  return _client;
+}
+
+/** Back-compat export: a lazy proxy so existing `supabase.channel(...)` calls
+ *  keep working, but the underlying client is still created on first access. */
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_t, prop) {
+    const c = client() as unknown as Record<string | symbol, unknown>;
+    const v = c[prop];
+    return typeof v === "function" ? v.bind(c) : v;
+  },
+});
+
+export class BackendNotConfiguredError extends Error {
+  constructor() {
+    super("The two-device flow needs the Supabase backend. Copy .env.example to .env and add your project's URL + anon key.");
+    this.name = "BackendNotConfiguredError";
+  }
+}
+
+/** Map a raw error into a calm, user-facing message (details still logged). */
+export function friendlyError(e: unknown): string {
+  if (e instanceof BackendNotConfiguredError) return e.message;
+  const raw = e instanceof Error ? e.message : String(e);
+  if (/failed to fetch|networkerror|load failed/i.test(raw)) {
+    return "Couldn't reach the server. Check your connection and try again.";
+  }
+  if (/rate.?limit/i.test(raw)) return "Too many attempts — wait a moment and try again.";
+  if (/not found|404/i.test(raw)) return "That code wasn't found. Double-check it and try again.";
+  if (/expired/i.test(raw)) return "This login expired. Start a new one.";
+  return raw;
+}
 
 async function callFn<T>(action: string, payload: Record<string, unknown>): Promise<T> {
-  const res = await fetch(FN, {
+  if (!isBackendConfigured()) throw new BackendNotConfiguredError();
+  const res = await fetch(`${URL}/functions/v1/verify`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", apikey: ANON, Authorization: `Bearer ${ANON}` },
+    headers: { "Content-Type": "application/json", apikey: ANON!, Authorization: `Bearer ${ANON!}` },
     body: JSON.stringify({ action, ...payload }),
   });
-  const body = await res.json();
+  const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body?.error ?? `request failed (${res.status})`);
   return body as T;
 }
@@ -67,7 +115,8 @@ export function submitAnswer(pairCode: string, answer: Answer): Promise<{ result
 export type SessionStatus = "pending" | "claimed" | "passed" | "failed" | "expired";
 
 export function watchSession(sessionId: string, onStatus: (status: SessionStatus) => void): () => void {
-  const channel = supabase
+  const sb = client();
+  const channel = sb
     .channel(`session-${sessionId}`)
     .on(
       "postgres_changes",
@@ -78,7 +127,7 @@ export function watchSession(sessionId: string, onStatus: (status: SessionStatus
       },
     )
     .subscribe();
-  return () => void supabase.removeChannel(channel);
+  return () => void sb.removeChannel(channel);
 }
 
 // --- a stable per-device id (the phone is "this browser/device") ---

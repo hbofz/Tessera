@@ -86,7 +86,9 @@ describe("Builder wizard (§8)", () => {
       await new Promise((r) => setTimeout(r, 800));
     }
 
-    await waitFor(() => expect(screen.getByText("Review your move")).toBeInTheDocument(), { timeout: 3000 });
+    await waitFor(() => expect(screen.getByText("Review your move")).toBeInTheDocument(), { timeout: 5000 });
     expect(onComplete).not.toHaveBeenCalled();
-  }, 15000);
+    // Renders StrengthVerdict (heavy Monte-Carlo) TWICE under jsdom — once at the
+    // first Review, again when the failed gate returns to Review — so allow room.
+  }, 30000);
 });

@@ -26,6 +26,7 @@ import { AnswerDisplay } from "./AnswerDisplay.js";
 import { selectOptions, transformOptions, readoutOptions, type Option } from "./builder-options.js";
 import { StrengthVerdict } from "./StrengthVerdict.js";
 import { DryRunGate } from "./DryRunGate.js";
+import { Button } from "./components/Button.js";
 
 export interface BuilderProps {
   readonly params?: GridParams;
@@ -36,14 +37,14 @@ export interface BuilderProps {
   readonly onComplete: (rule: Rule) => void;
 }
 
-type Step = "select" | "transform" | "readout" | "review" | "drymun";
+type Step = "select" | "transform" | "readout" | "review" | "dryrun";
+const ORDER: Step[] = ["select", "transform", "readout", "review", "dryrun"];
 
 export function Builder({ params = DEFAULT_PARAMS, sampleSeed = "builder-samples", onComplete }: BuilderProps) {
   const [step, setStep] = useState<Step>("select");
   const [select, setSelect] = useState<Select | null>(null);
   const [transforms, setTransforms] = useState<Transform[]>([]);
   const [readout, setReadout] = useState<Readout | null>(null);
-  // A nonce that bumps to draw a fresh sample grid ("show another grid").
   const [sampleTick, setSampleTick] = useState(1);
 
   const sample = useMemo(
@@ -56,12 +57,11 @@ export function Builder({ params = DEFAULT_PARAMS, sampleSeed = "builder-samples
   const txOpts = useMemo(() => transformOptions(), []);
   const roOpts = useMemo(() => readoutOptions(params.rows, params.cols), [params.rows, params.cols]);
 
-  // The (partial) rule assembled so far, when complete enough to run.
   const completeRule: Rule | null =
     select && transforms.length >= 1 && readout ? { select, transforms, readout } : null;
 
   return (
-    <section style={{ maxWidth: 460, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+    <section className="w-full max-w-[520px] mx-auto flex flex-col gap-5">
       <StepHeader step={step} />
 
       {step === "select" && (
@@ -69,7 +69,6 @@ export function Builder({ params = DEFAULT_PARAMS, sampleSeed = "builder-samples
           options={selOpts}
           selected={select}
           sample={sample}
-          params={params}
           onPick={setSelect}
           onAnother={nextSample}
           onNext={() => setStep("transform")}
@@ -110,11 +109,11 @@ export function Builder({ params = DEFAULT_PARAMS, sampleSeed = "builder-samples
           params={params}
           sampleSeed={sampleSeed}
           onBack={() => setStep("readout")}
-          onConfirm={() => setStep("drymun")}
+          onConfirm={() => setStep("dryrun")}
         />
       )}
 
-      {step === "drymun" && completeRule && (
+      {step === "dryrun" && completeRule && (
         <DryRunGate
           rule={completeRule}
           params={params}
@@ -139,7 +138,6 @@ function SelectStep({
   options,
   selected,
   sample,
-  params,
   onPick,
   onAnother,
   onNext,
@@ -147,7 +145,6 @@ function SelectStep({
   options: Option<Select>[];
   selected: Select | null;
   sample: Grid;
-  params: GridParams;
   onPick: (s: Select) => void;
   onAnother: () => void;
   onNext: () => void;
@@ -159,12 +156,16 @@ function SelectStep({
 
   return (
     <>
-      <GridView grid={sample} highlight={highlight} ariaLabel="sample grid with your selection glowing" />
-      <ShowAnother onClick={onAnother} />
+      <Preview>
+        <div className="w-full max-w-[300px] mx-auto">
+          <GridView grid={sample} highlight={highlight} ariaLabel="sample grid with your selection glowing" />
+        </div>
+        <ShowAnother onClick={onAnother} locked={selected !== null} />
+      </Preview>
       <OptionList
         ariaLabel="which cells"
         options={options}
-        isSelected={(o) => JSON.stringify(o) === JSON.stringify(selected)}
+        isSelected={(o) => sameOption(o, selected)}
         onPick={onPick}
       />
       <NavRow onNext={selected ? onNext : undefined} nextLabel="Next: the move" />
@@ -195,7 +196,11 @@ function TransformStep({
   onBack: () => void;
   onNext: () => void;
 }) {
-  // Preview the chain so far (before = sample, after = sample with transforms).
+  // Is the optional second slot revealed? It opens EMPTY (no pre-filled move) so
+  // the user must choose — pre-filling it with options[0] ("Slide up") silently
+  // undid a "Slide down" move 1, making the preview look like nothing changed.
+  const [secondOpen, setSecondOpen] = useState(transforms.length === 2);
+
   const after = useMemo(() => {
     let g = sample;
     for (const t of transforms) {
@@ -210,32 +215,37 @@ function TransformStep({
     onSet(next);
   };
 
+  const removeSecond = () => {
+    onSet(transforms.slice(0, 1));
+    setSecondOpen(false);
+  };
+
   return (
     <>
-      <BeforeAfter before={sample} after={after} />
-      <ShowAnother onClick={onAnother} />
+      <Preview>
+        <BeforeAfter before={sample} after={after} />
+        <ShowAnother onClick={onAnother} locked={transforms.length >= 1} />
+      </Preview>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <SlotPicker
-          label="Move 1"
-          options={options}
-          value={transforms[0] ?? null}
-          onPick={(t) => setSlot(0, t)}
-        />
-        {transforms.length >= 1 &&
-          (transforms.length === 2 ? (
-            <SlotPicker
-              label="Move 2"
-              options={options}
-              value={transforms[1] ?? null}
-              onPick={(t) => setSlot(1, t)}
-              onRemove={() => onSet(transforms.slice(0, 1))}
-            />
-          ) : (
-            <button type="button" onClick={() => onSet([...transforms, options[0]!.value])} style={ghostBtn}>
-              + add a second move
-            </button>
-          ))}
+      <div className="flex flex-col gap-3">
+        <SlotPicker label="Move 1" options={options} value={transforms[0] ?? null} onPick={(t) => setSlot(0, t)} />
+        {secondOpen ? (
+          <SlotPicker
+            label="Move 2"
+            options={options}
+            value={transforms[1] ?? null}
+            onPick={(t) => setSlot(1, t)}
+            onRemove={removeSecond}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSecondOpen(true)}
+            className="self-center text-sm px-3.5 py-2 rounded-lg border border-dashed border-border text-text-muted hover:text-text hover:border-text-faint transition"
+          >
+            + add a second move
+          </button>
+        )}
       </div>
 
       <NavRow onBack={onBack} onNext={transforms.length >= 1 ? onNext : undefined} nextLabel="Next: the answer" />
@@ -279,7 +289,7 @@ function ReadoutStep({
   const highlight = useMemo(() => {
     if (!readout) return new Set<string>();
     const positions = readoutPositions(readout, params.rows, params.cols);
-    if (!positions) return new Set<string>(); // count: whole-grid, nothing single
+    if (!positions) return new Set<string>();
     return new Set(positions.map((p) => posKey(p.row, p.col)));
   }, [readout, params.rows, params.cols]);
 
@@ -290,23 +300,27 @@ function ReadoutStep({
 
   return (
     <>
-      <p style={muted}>This is the grid after your move. Pick what to report from it.</p>
-      <GridView grid={after} highlight={highlight} ariaLabel="grid after your move; readout target glowing" />
-      <ShowAnother onClick={onAnother} />
+      <p className="text-sm text-text-muted m-0 text-center">
+        This is the grid after your move. Pick what to report from it.
+      </p>
+      <Preview>
+        <div className="w-full max-w-[300px] mx-auto">
+          <GridView grid={after} highlight={highlight} ariaLabel="grid after your move; readout target glowing" />
+        </div>
+        <ShowAnother onClick={onAnother} locked={readout !== null} />
+      </Preview>
 
       {answer && (
-        <div style={{ textAlign: "center" }}>
-          <span style={muted}>For this grid you'd tap:</span>
-          <div style={{ marginTop: 6 }}>
-            <AnswerDisplay answer={answer} />
-          </div>
+        <div className="text-center flex flex-col items-center gap-1.5">
+          <span className="text-sm text-text-muted">For this grid you'd tap:</span>
+          <AnswerDisplay answer={answer} />
         </div>
       )}
 
       <OptionList
         ariaLabel="what to report"
         options={options}
-        isSelected={(o) => JSON.stringify(o) === JSON.stringify(readout)}
+        isSelected={(o) => sameOption(o, readout)}
         onPick={onPick}
       />
       <NavRow onBack={onBack} onNext={readout ? onNext : undefined} nextLabel="Review" />
@@ -333,13 +347,13 @@ function ReviewStep({
 }) {
   return (
     <>
-      <p style={muted}>
+      <p className="text-sm text-text-muted m-0 text-center">
         Here's how strong your move is. Higher is harder to guess and harder for a watcher to learn.
       </p>
       <StrengthVerdict rule={rule} params={params} sampleSeed={sampleSeed} />
-      <p style={{ ...muted, fontStyle: "italic" }}>
-        Next you'll prove you can do it from memory — no hints. After that, your move goes dark: the app
-        will never show it again.
+      <p className="text-sm text-text-muted italic m-0 text-center leading-relaxed">
+        Next you'll prove you can do it from memory — no hints. After that, your move goes dark: the
+        app will never show it again.
       </p>
       <NavRow onBack={onBack} onNext={onConfirm} nextLabel="I'm ready — practice it" />
     </>
@@ -350,15 +364,29 @@ function ReviewStep({
 // Shared bits
 // ---------------------------------------------------------------------------
 
-const muted: React.CSSProperties = { color: "#666", fontSize: 14, margin: 0, textAlign: "center" };
-const ghostBtn: React.CSSProperties = {
-  padding: "8px 14px",
-  borderRadius: 8,
-  border: "1px dashed #aaa",
-  background: "#fff",
-  cursor: "pointer",
-  fontSize: 14,
-};
+/** Structural equality for option values — order-independent, unlike the old
+ *  JSON.stringify compare which depended on key insertion order. */
+function sameOption<T>(a: T, b: T | null): boolean {
+  if (b === null) return false;
+  return stableKey(a) === stableKey(b);
+}
+function stableKey(v: unknown): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  const o = v as Record<string, unknown>;
+  return JSON.stringify(
+    Object.keys(o)
+      .sort()
+      .map((k) => [k, stableKey(o[k])]),
+  );
+}
+
+function Preview({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-xl bg-surface-2/50 border border-border p-4">
+      {children}
+    </div>
+  );
+}
 
 function StepHeader({ step }: { step: Step }) {
   const titles: Record<Step, string> = {
@@ -366,22 +394,42 @@ function StepHeader({ step }: { step: Step }) {
     transform: "2 · What do you do?",
     readout: "3 · What do you report?",
     review: "Review your move",
-    drymun: "Prove you've got it",
+    dryrun: "Prove you've got it",
   };
-  return <h2 style={{ margin: 0, fontSize: 20, textAlign: "center" }}>{titles[step]}</h2>;
+  const idx = ORDER.indexOf(step);
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <h2 className="m-0 text-xl font-semibold text-center">{titles[step]}</h2>
+      <div className="flex gap-1.5" aria-hidden="true">
+        {ORDER.map((s, i) => (
+          <span
+            key={s}
+            className={
+              "h-1 rounded-pill transition-all " +
+              (i === idx ? "w-6 bg-ink" : i < idx ? "w-3 bg-text-faint" : "w-3 bg-surface-2 border border-border")
+            }
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function BeforeAfter({ before, after }: { before: Grid; after: Grid }) {
   return (
-    <div style={{ display: "flex", gap: 16, alignItems: "center", justifyContent: "center" }}>
+    <div className="flex gap-2 items-center justify-center w-full">
       <Labeled label="before">
-        <GridView grid={before} cellSize={40} ariaLabel="grid before your move" />
+        <div className="w-full max-w-[168px]">
+          <GridView grid={before} ariaLabel="grid before your move" />
+        </div>
       </Labeled>
-      <span aria-hidden="true" style={{ fontSize: 24, color: "#999" }}>
+      <span aria-hidden="true" className="shrink-0 text-2xl text-text-faint">
         →
       </span>
       <Labeled label="after">
-        <GridView grid={after} cellSize={40} ariaLabel="grid after your move" />
+        <div className="w-full max-w-[168px]">
+          <GridView grid={after} ariaLabel="grid after your move" />
+        </div>
       </Labeled>
     </div>
   );
@@ -389,18 +437,26 @@ function BeforeAfter({ before, after }: { before: Grid; after: Grid }) {
 
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+    <div className="flex flex-col items-center gap-1.5 min-w-0 flex-1">
       {children}
-      <small style={{ color: "#999" }}>{label}</small>
+      <small className="text-text-faint">{label}</small>
     </div>
   );
 }
 
-function ShowAnother({ onClick }: { onClick: () => void }) {
+/** Re-roll the sample grid. LOCKED once the user has made their choice on this
+ *  step — otherwise the grid would shift out from under them while they reason
+ *  about a specific one (and a recolor/select they just picked would re-apply to
+ *  a different grid, looking like a glitch). They can still re-roll while
+ *  exploring, before committing to a choice. */
+function ShowAnother({ onClick, locked }: { onClick: () => void; locked?: boolean }) {
   return (
-    <button type="button" onClick={onClick} style={{ ...ghostBtn, alignSelf: "center" }}>
-      ↻ Show another grid
-    </button>
+    <div className="flex flex-col items-center gap-1">
+      <Button variant="ghost" size="sm" onClick={onClick} disabled={locked}>
+        ↻ Show another grid
+      </Button>
+      {locked && <span className="text-xs text-text-faint">Locked to this grid while you decide</span>}
+    </div>
   );
 }
 
@@ -416,11 +472,7 @@ function OptionList<T>({
   ariaLabel: string;
 }) {
   return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}
-    >
+    <div role="radiogroup" aria-label={ariaLabel} className="flex flex-wrap gap-2 justify-center">
       {options.map((o) => {
         const sel = isSelected(o.value);
         return (
@@ -430,15 +482,12 @@ function OptionList<T>({
             role="radio"
             aria-checked={sel}
             onClick={() => onPick(o.value)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 999,
-              border: "1px solid " + (sel ? "#111" : "#ddd"),
-              background: sel ? "#111" : "#fff",
-              color: sel ? "#fff" : "#333",
-              cursor: "pointer",
-              fontSize: 13,
-            }}
+            className={
+              "px-3.5 py-2 rounded-pill text-sm transition active:scale-95 border " +
+              (sel
+                ? "bg-ink text-ink-contrast border-ink"
+                : "bg-surface text-text border-border hover:bg-surface-2")
+            }
           >
             {o.label}
           </button>
@@ -462,16 +511,16 @@ function SlotPicker({
   onRemove?: () => void;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <strong style={{ fontSize: 13 }}>{label}</strong>
+    <div className="flex flex-col gap-2">
+      <div className="flex justify-between items-center">
+        <strong className="text-sm">{label}</strong>
         {onRemove && (
-          <button type="button" onClick={onRemove} style={{ ...ghostBtn, padding: "2px 8px", fontSize: 12 }}>
+          <button type="button" onClick={onRemove} className="text-xs text-text-muted hover:text-danger underline underline-offset-2">
             remove
           </button>
         )}
       </div>
-      <OptionList ariaLabel={label} options={options} isSelected={(o) => JSON.stringify(o) === JSON.stringify(value)} onPick={onPick} />
+      <OptionList ariaLabel={label} options={options} isSelected={(o) => sameOption(o, value)} onPick={onPick} />
     </div>
   );
 }
@@ -486,30 +535,17 @@ function NavRow({
   nextLabel: string;
 }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+    <div className="flex justify-between items-center gap-3 mt-1">
       {onBack ? (
-        <button type="button" onClick={onBack} style={ghostBtn}>
+        <Button variant="ghost" size="sm" onClick={onBack}>
           ← Back
-        </button>
+        </Button>
       ) : (
         <span />
       )}
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={!onNext}
-        style={{
-          padding: "10px 22px",
-          borderRadius: 999,
-          border: "none",
-          background: onNext ? "#111" : "#ccc",
-          color: "#fff",
-          cursor: onNext ? "pointer" : "default",
-          fontSize: 15,
-        }}
-      >
+      <Button onClick={onNext} disabled={!onNext}>
         {nextLabel}
-      </button>
+      </Button>
     </div>
   );
 }
