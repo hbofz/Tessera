@@ -165,10 +165,27 @@ async function submit(body: Record<string, unknown>): Promise<Response> {
     return json({ result: "fail", reason: "expired" });
   }
 
+  const deviceId = sess.data.device_id as string;
+
+  // Rate limit BEFORE verifying (§6): the answer space is small, so an attacker
+  // could otherwise spin up sessions and guess until one matches. Count recent
+  // attempts for this device; refuse once the window is full. Throttling here
+  // (not just per-session) is what closes cross-session brute force.
+  const windowStart = new Date(Date.now() - RATE_WINDOW_MS).toISOString();
+  const recent = await admin
+    .from("auth_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("device_id", deviceId)
+    .gte("created_at", windowStart);
+  if ((recent.count ?? 0) >= RATE_MAX_ATTEMPTS) {
+    await admin.from("login_sessions").update({ status: "failed" }).eq("id", sess.data.id);
+    return json({ result: "fail", reason: "rate-limited" });
+  }
+
   const enr = await admin
     .from("enrollments")
     .select("credential, seed, params")
-    .eq("device_id", sess.data.device_id)
+    .eq("device_id", deviceId)
     .single();
   if (enr.error || !enr.data) return json({ error: "enrollment missing" }, 404);
 
@@ -181,6 +198,14 @@ async function submit(body: Record<string, unknown>): Promise<Response> {
   const verifier = new OptionBVerifier(enumerateFor(params), new Sha256VerifyHash());
   const pass = verifier.verify(enr.data.credential as Credential, grid, answer, tick);
 
+  // Record the attempt (for the rate limiter) and resolve the session. Only the
+  // server writes 'passed'/'failed' — a client can't self-authenticate.
+  await admin.from("auth_attempts").insert({ device_id: deviceId, ok: pass });
   await admin.from("login_sessions").update({ status: pass ? "passed" : "failed" }).eq("id", sess.data.id);
   return json({ result: pass ? "pass" : "fail" });
 }
+
+// Rate-limit window: a human needs only a handful of tries; this is brutal for a
+// bruteforcer against the small answer space (§6).
+const RATE_MAX_ATTEMPTS = 8;
+const RATE_WINDOW_MS = 60_000;
