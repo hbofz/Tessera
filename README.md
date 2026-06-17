@@ -128,7 +128,13 @@ npm run sync:edge    # regenerate the Edge Function's copy of the engine from sr
 
 ### Backend (Supabase)
 
-The two-device flow needs the Supabase project. The frontend reads `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from `.env` (the committed values are the **public** anon key — safe to ship; real security is enforced by Row-Level Security + the Edge Function).
+The two-device flow needs the Supabase project. Copy the template and fill in your project's values:
+
+```sh
+cp .env.example .env
+```
+
+The frontend reads `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from `.env`. These are **public** by design (the anon key is meant to ship in the browser; real security is enforced by Row-Level Security + the Edge Function). Never commit the `service_role` key.
 
 ```sh
 supabase link --project-ref <your-project-ref>
