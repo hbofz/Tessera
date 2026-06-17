@@ -1,30 +1,30 @@
 /**
  * AnswerInput — taps in the derived scalar answer (DESIGN.md §4, §5 READOUT).
  *
- * The answer's SHAPE depends on the readout type, so this component adapts:
+ * The answer's SHAPE drives which input shows:
  *   - cell  → pick one cell appearance (a color or empty)
  *   - count → enter / step a number
- *   - line  → tap a short sequence of cell appearances
+ *   - line  → tap a short sequence of cell appearances (each slot cycles)
  *
- * Reused by BOTH practice mode (§6) and the login flow (§10). It is pure input:
- * it produces an Answer and never reveals the expected one (§9.1).
+ * Reused by BOTH practice (§6) and login (§10). Pure input: it produces an
+ * Answer and never reveals the expected one (§9.1).
  *
- * Design intent (§3 "calm, not stressful"): tapping colored chips, not typing —
- * fast, low-friction, forgiving. The chips are the same colorblind-safe styles
- * as the grid (color + shape), so input and challenge read the same way.
+ * Design intent (§3 "calm, not stressful"): tapping colored chips, not typing.
+ * Chips use the same colorblind-safe styles (color + shape) as the grid, so
+ * input and challenge read the same way (§4b).
  */
 
 import { useState } from "react";
 import type { Answer, Cell, Color } from "../engine/types.js";
-import type { ReadoutShape } from "../engine/readout-shape.js";
+import type { ReadoutShape } from "./../engine/readout-shape.js";
 import { COLORS, EMPTY } from "../engine/types.js";
 import { CELL_STYLES, EMPTY_STYLE, cellLabel } from "./palette.js";
+import { Button } from "./components/Button.js";
 
 export interface AnswerInputProps {
-  /** The readout SHAPE determines which input to show. Crucially this is only
-   *  the kind (+ dimensions), NOT the full readout — so the input never needs
-   *  the secret rule (§9.1). Under Option B the client doesn't even have the
-   *  rule; the shape is all the UI requires. */
+  /** The readout SHAPE determines which input to show — only the kind (+ dims),
+   *  NOT the full readout, so the input never needs the secret rule (§9.1).
+   *  Under Option B the client doesn't even have the rule. */
   readonly shape: ReadoutShape;
   readonly onSubmit: (answer: Answer) => void;
   readonly disabled?: boolean;
@@ -50,11 +50,13 @@ function CellChip({
   selected,
   onClick,
   disabled,
+  ariaLabel,
 }: {
   cell: Cell;
   selected: boolean;
   onClick: () => void;
   disabled?: boolean | undefined;
+  ariaLabel?: string;
 }) {
   const isEmpty = cell === EMPTY;
   const fill = isEmpty ? EMPTY_STYLE.fill : CELL_STYLES[cell as Color].fill;
@@ -64,38 +66,36 @@ function CellChip({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={selected}
-      aria-label={cellLabel(cell)}
+      aria-label={ariaLabel ?? cellLabel(cell)}
       style={{
-        width: 44,
-        height: 44,
-        borderRadius: 8,
-        border: selected ? "3px solid #111" : "1px solid rgba(0,0,0,0.15)",
         background: fill,
-        cursor: disabled ? "default" : "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 18,
-        color: "rgba(255,255,255,0.95)",
+        boxShadow: selected
+          ? "0 0 0 3px var(--color-text), inset 0 0 0 2px var(--color-surface)"
+          : "inset 0 0 0 1px rgba(0,0,0,0.12)",
       }}
+      className="w-12 h-12 rounded-lg flex items-center justify-center text-white transition active:scale-95 disabled:opacity-50 disabled:active:scale-100"
     >
-      {!isEmpty && CELL_STYLES[cell as Color].glyph}
+      {!isEmpty && (
+        <span aria-hidden="true" className="text-lg leading-none drop-shadow">
+          {CELL_STYLES[cell as Color].glyph}
+        </span>
+      )}
     </button>
   );
 }
-
-// --- cell readout: pick one ---
 
 interface VariantProps {
   readonly onSubmit: (answer: Answer) => void;
   readonly disabled?: boolean | undefined;
 }
 
+// --- cell readout: pick one ---
+
 function CellAnswer({ onSubmit, disabled }: VariantProps) {
   const [picked, setPicked] = useState<Cell | null>(null);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
-      <div role="group" aria-label="pick the cell" style={{ display: "flex", gap: 8 }}>
+    <div className="flex flex-col gap-3 items-center">
+      <div role="group" aria-label="pick the cell" className="flex gap-2">
         {CELL_OPTIONS.map((cell) => (
           <CellChip
             key={cell}
@@ -118,17 +118,22 @@ function CellAnswer({ onSubmit, disabled }: VariantProps) {
 
 function CountAnswer({ onSubmit, disabled, maxCount = 99 }: VariantProps & { maxCount?: number }) {
   const [n, setN] = useState(0);
-  const clamp = (x: number) => Math.max(0, Math.min(maxCount, x));
+  const hi = Math.max(0, maxCount);
+  const clamp = (x: number) => Math.max(0, Math.min(hi, x));
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <StepButton label="decrease" onClick={() => setN((x) => clamp(x - 1))} disabled={disabled}>
+    <div className="flex flex-col gap-3 items-center">
+      <div className="flex gap-2 items-center">
+        <StepButton label="decrease" onClick={() => setN((x) => clamp(x - 1))} disabled={disabled || n <= 0}>
           −
         </StepButton>
-        <output aria-label="count" style={{ fontSize: 28, minWidth: 48, fontVariantNumeric: "tabular-nums" }}>
+        <output
+          aria-label="count"
+          className="text-3xl min-w-[3rem] text-center"
+          style={{ fontVariantNumeric: "tabular-nums" }}
+        >
           {n}
         </output>
-        <StepButton label="increase" onClick={() => setN((x) => clamp(x + 1))} disabled={disabled}>
+        <StepButton label="increase" onClick={() => setN((x) => clamp(x + 1))} disabled={disabled || n >= hi}>
           +
         </StepButton>
       </div>
@@ -154,7 +159,7 @@ function StepButton({
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      style={{ width: 44, height: 44, borderRadius: 8, fontSize: 22, cursor: disabled ? "default" : "pointer" }}
+      className="w-12 h-12 rounded-lg text-2xl border border-border bg-surface text-text hover:bg-surface-2 transition active:scale-95 disabled:opacity-40 disabled:active:scale-100"
     >
       {children}
     </button>
@@ -176,18 +181,26 @@ function LineAnswer({ onSubmit, disabled, lineLength = 4 }: VariantProps & { lin
     });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
-      <div role="group" aria-label="tap each cell in order" style={{ display: "flex", gap: 8 }}>
+    <div className="flex flex-col gap-3 items-center">
+      <div role="group" aria-label="tap each cell in order" className="flex gap-2 items-end">
         {seq.map((cell, i) => (
-          <CellChip
-            key={i}
-            cell={cell}
-            selected={false}
-            onClick={() => cycle(i)}
-            disabled={disabled}
-          />
+          <div key={i} className="flex flex-col items-center gap-1">
+            <CellChip
+              cell={cell}
+              selected={false}
+              onClick={() => cycle(i)}
+              disabled={disabled}
+              // Slot position is announced so SR users know which they're editing,
+              // and the visible index below gives the same cue to sighted users.
+              ariaLabel={`position ${i + 1}: ${cellLabel(cell)} (tap to change)`}
+            />
+            <span aria-hidden="true" className="text-xs text-text-faint tabular-nums">
+              {i + 1}
+            </span>
+          </div>
         ))}
       </div>
+      <p className="text-xs text-text-faint m-0">Tap a tile to cycle its color.</p>
       <SubmitButton disabled={disabled} onClick={() => onSubmit({ kind: "line", value: seq.slice() })} />
     </div>
   );
@@ -197,21 +210,8 @@ function LineAnswer({ onSubmit, disabled, lineLength = 4 }: VariantProps & { lin
 
 function SubmitButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean | undefined }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        padding: "10px 28px",
-        borderRadius: 999,
-        border: "none",
-        background: disabled ? "#ccc" : "#111",
-        color: "#fff",
-        fontSize: 16,
-        cursor: disabled ? "default" : "pointer",
-      }}
-    >
+    <Button onClick={onClick} disabled={disabled} size="md">
       Check
-    </button>
+    </Button>
   );
 }

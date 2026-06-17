@@ -10,11 +10,12 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { startLogin, watchSession, type SessionStatus } from "./backend.js";
+import { startLogin, watchSession, friendlyError, type SessionStatus } from "./backend.js";
+import { Card, Button, Spinner, Banner } from "./components/index.js";
 
 type Phase =
   | { kind: "idle" }
-  | { kind: "waiting"; pairCode: string; sessionId: string; status: SessionStatus }
+  | { kind: "waiting"; pairCode: string; sessionId: string; status: SessionStatus; slow: boolean }
   | { kind: "in" }
   | { kind: "denied" }
   | { kind: "error"; message: string };
@@ -22,14 +23,26 @@ type Phase =
 export function LaptopMode() {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const unsubRef = useRef<(() => void) | null>(null);
+  const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => unsubRef.current?.(), []);
+  useEffect(
+    () => () => {
+      unsubRef.current?.();
+      if (slowTimer.current) clearTimeout(slowTimer.current);
+    },
+    [],
+  );
 
   const begin = async () => {
     setPhase({ kind: "idle" });
     try {
       const { sessionId, pairCode } = await startLogin();
-      setPhase({ kind: "waiting", pairCode, sessionId, status: "pending" });
+      setPhase({ kind: "waiting", pairCode, sessionId, status: "pending", slow: false });
+      // After ~20s with no progress, surface a gentle "taking a while" hint.
+      if (slowTimer.current) clearTimeout(slowTimer.current);
+      slowTimer.current = setTimeout(() => {
+        setPhase((p) => (p.kind === "waiting" ? { ...p, slow: true } : p));
+      }, 20000);
       unsubRef.current?.();
       unsubRef.current = watchSession(sessionId, (status) => {
         if (status === "passed") setPhase({ kind: "in" });
@@ -37,131 +50,82 @@ export function LaptopMode() {
         else setPhase((p) => (p.kind === "waiting" ? { ...p, status } : p));
       });
     } catch (e) {
-      setPhase({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      setPhase({ kind: "error", message: friendlyError(e) });
     }
   };
 
   const reset = () => {
     unsubRef.current?.();
     unsubRef.current = null;
+    if (slowTimer.current) clearTimeout(slowTimer.current);
     setPhase({ kind: "idle" });
   };
 
   return (
-    <div style={card}>
-      <div style={{ fontSize: 13, color: "#999", letterSpacing: 1, textTransform: "uppercase" }}>Demo App</div>
-      <h2 style={{ margin: "4px 0 16px", fontSize: 22 }}>🔐 MyVault</h2>
+    <Card lifted className="w-full max-w-[380px] flex flex-col items-center gap-4 text-center">
+      <div className="text-xs text-text-faint tracking-widest uppercase">Demo App</div>
+      <h2 className="m-0 text-2xl font-semibold flex items-center gap-2">
+        <span aria-hidden="true">🔐</span> MyVault
+      </h2>
 
       {phase.kind === "idle" && (
         <>
-          <p style={{ color: "#666", textAlign: "center" }}>Sign in to continue.</p>
-          <button type="button" onClick={begin} style={primaryBtn}>
+          <p className="text-text-muted m-0">Sign in to continue.</p>
+          <Button onClick={begin} size="lg">
             Log in with Tessera
-          </button>
+          </Button>
         </>
       )}
 
       {phase.kind === "waiting" && (
         <>
-          <p style={{ color: "#666", textAlign: "center", margin: 0 }}>
-            On your Tessera device, choose <strong>Authenticate</strong> and enter this code:
+          <p className="text-text-muted m-0">
+            On your Tessera device, choose <strong className="text-text">Authenticate</strong> and enter
+            this code:
           </p>
-          <div style={codeBox}>{phase.pairCode}</div>
-          <p style={{ color: "#999", fontSize: 14 }}>
+          <div className="font-mono text-4xl font-bold tracking-[0.3em] indent-[0.3em] px-5 py-3 rounded-xl bg-surface-2 border border-border select-all">
+            {phase.pairCode}
+          </div>
+          <p className="text-sm text-text-muted m-0 flex items-center gap-2">
+            <Spinner size={16} />
             {phase.status === "claimed" ? "Device connected — waiting for your move…" : "Waiting for your device…"}
           </p>
-          <Spinner />
-          <button type="button" onClick={reset} style={linkBtn}>
+          {phase.slow && (
+            <Banner tone="muted">
+              Taking a while? Make sure your phone opened <strong>Authenticate</strong> and typed this exact
+              code. You can cancel and start a fresh one.
+            </Banner>
+          )}
+          <Button variant="link" size="sm" onClick={reset}>
             Cancel
-          </button>
+          </Button>
         </>
       )}
 
       {phase.kind === "in" && (
         <>
-          <p style={{ fontSize: 26, fontWeight: 700, color: "#009E73" }}>Welcome! ✓</p>
-          <p style={{ color: "#666", textAlign: "center" }}>You're signed in to MyVault.</p>
-          <button type="button" onClick={reset} style={primaryBtn}>
-            Log out
-          </button>
+          <p className="text-2xl font-bold text-success m-0">Welcome! ✓</p>
+          <p className="text-text-muted m-0">You're signed in to MyVault.</p>
+          <Button onClick={reset}>Log out</Button>
         </>
       )}
 
       {phase.kind === "denied" && (
         <>
-          <p style={{ fontSize: 22, fontWeight: 700, color: "#D55E00" }}>Login denied ✗</p>
-          <p style={{ color: "#666", textAlign: "center" }}>The move didn't match (or the code expired).</p>
-          <button type="button" onClick={begin} style={primaryBtn}>
-            Try again
-          </button>
+          <p className="text-xl font-bold text-danger m-0">Login denied ✗</p>
+          <p className="text-text-muted m-0">The move didn't match (or the code expired).</p>
+          <Button onClick={begin}>Try again</Button>
         </>
       )}
 
       {phase.kind === "error" && (
         <>
-          <p style={{ color: "#D55E00" }}>Something went wrong: {phase.message}</p>
-          <button type="button" onClick={begin} style={primaryBtn}>
-            Retry
-          </button>
+          <Banner tone="error" role="alert">
+            {phase.message}
+          </Banner>
+          <Button onClick={begin}>Retry</Button>
         </>
       )}
-    </div>
+    </Card>
   );
 }
-
-function Spinner() {
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        width: 24,
-        height: 24,
-        border: "3px solid #eee",
-        borderTopColor: "#0072B2",
-        borderRadius: "50%",
-        animation: "tessera-spin 0.8s linear infinite",
-      }}
-    />
-  );
-}
-
-const card: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  gap: 14,
-  padding: 32,
-  border: "1px solid #eee",
-  borderRadius: 16,
-  boxShadow: "0 4px 24px rgba(0,0,0,0.06)",
-  minWidth: 300,
-};
-
-const primaryBtn: React.CSSProperties = {
-  padding: "12px 28px",
-  borderRadius: 999,
-  border: "none",
-  background: "#111",
-  color: "#fff",
-  fontSize: 16,
-  cursor: "pointer",
-};
-
-const codeBox: React.CSSProperties = {
-  fontSize: 40,
-  fontWeight: 700,
-  letterSpacing: 10,
-  padding: "12px 20px",
-  background: "#F5F5F5",
-  borderRadius: 12,
-  fontFamily: "ui-monospace, monospace",
-};
-
-const linkBtn: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  color: "#0072B2",
-  cursor: "pointer",
-  fontSize: 13,
-  textDecoration: "underline",
-};

@@ -20,13 +20,8 @@ import { DEFAULT_PARAMS } from "../engine/clock.js";
 import { readoutShape, type ReadoutShape } from "../engine/readout-shape.js";
 import { OptionBVerifier } from "../auth/option-b-verifier.js";
 import type { Answer, Grid, Rule } from "../engine/types.js";
-import {
-  enrollDevice,
-  claimSession,
-  submitAnswer,
-  getDeviceId,
-  seedForDevice,
-} from "./backend.js";
+import { enrollDevice, claimSession, submitAnswer, getDeviceId, seedForDevice, friendlyError } from "./backend.js";
+import { Card, Button, Spinner, Banner, CodeInput } from "./components/index.js";
 
 const ENROLLED_KEY = "tessera.phone.enrolled"; // stores {shape} only, not the rule
 
@@ -55,7 +50,6 @@ export function PhoneMode() {
     setBusy(true);
     setError(null);
     try {
-      // Phone computes its own verifier — R never sent (§2).
       const verifier = new OptionBVerifier({ rows: params.rows, cols: params.cols, maxChain: 2 });
       const credential = verifier.enroll(rule);
       const shape = readoutShape(rule.readout, params.rows, params.cols);
@@ -63,7 +57,7 @@ export function PhoneMode() {
       localStorage.setItem(ENROLLED_KEY, JSON.stringify({ readoutShape: shape } satisfies EnrolledMarker));
       setEnrolled({ readoutShape: shape });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(friendlyError(e));
     } finally {
       setBusy(false);
     }
@@ -76,33 +70,36 @@ export function PhoneMode() {
 
   if (!enrolled) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-        <p style={{ color: "#666", maxWidth: 360, textAlign: "center" }}>
+      <div className="w-full flex flex-col items-center gap-4">
+        <p className="text-text-muted max-w-[380px] text-center leading-relaxed m-0">
           This device is your authenticator. Build your secret move — it's the only time you'll see it,
           and it never leaves this device.
         </p>
-        {busy && <p>Enrolling…</p>}
-        {error && <p style={{ color: "#D55E00" }}>{error}</p>}
+        {busy && (
+          <p className="flex items-center gap-2 text-text-muted m-0">
+            <Spinner size={16} /> Saving your move…
+          </p>
+        )}
+        {error && (
+          <div className="w-full max-w-[380px]">
+            <Banner tone="error" role="alert">
+              {error}
+            </Banner>
+          </div>
+        )}
         <Builder onComplete={enroll} />
       </div>
     );
   }
 
-  return (
-    <Challenge
-      deviceId={deviceId}
-      seed={seed}
-      shape={enrolled.readoutShape}
-      onForget={forget}
-    />
-  );
+  return <Challenge deviceId={deviceId} shape={enrolled.readoutShape} onForget={forget} />;
 }
 
 // ── the challenge responder ───────────────────────────────────────────────────
 
 type Phase =
   | { kind: "code" }
-  | { kind: "loading" }
+  | { kind: "loading"; what: string }
   | { kind: "answer"; pairCode: string; grid: Grid }
   | { kind: "result"; pass: boolean };
 
@@ -112,119 +109,116 @@ function Challenge({
   onForget,
 }: {
   deviceId: string;
-  seed: string;
   shape: ReadoutShape;
   onForget: () => void;
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: "code" });
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [confirmForget, setConfirmForget] = useState(false);
 
   const claim = async () => {
     setError(null);
-    setPhase({ kind: "loading" });
+    setPhase({ kind: "loading", what: "Connecting…" });
     try {
-      const res = await claimSession(code.trim().toUpperCase(), deviceId);
-      setPhase({ kind: "answer", pairCode: code.trim().toUpperCase(), grid: res.grid });
+      const pair = code.trim().toUpperCase();
+      const res = await claimSession(pair, deviceId);
+      setPhase({ kind: "answer", pairCode: pair, grid: res.grid });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(friendlyError(e));
       setPhase({ kind: "code" });
     }
   };
 
   const submit = async (answer: Answer, pairCode: string) => {
-    setPhase({ kind: "loading" });
+    setPhase({ kind: "loading", what: "Checking your move…" });
     try {
       const res = await submitAnswer(pairCode, answer);
       setPhase({ kind: "result", pass: res.result === "pass" });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(friendlyError(e));
       setPhase({ kind: "code" });
     }
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, maxWidth: 380 }}>
-      <h2 style={{ margin: 0, fontSize: 20 }}>Authenticate</h2>
+    <Card lifted className="w-full max-w-[400px] flex flex-col items-center gap-4 text-center">
+      <h2 className="m-0 text-xl font-semibold">Authenticate</h2>
 
       {phase.kind === "code" && (
         <>
-          <p style={{ color: "#666", textAlign: "center" }}>
-            Enter the code shown on the device you're logging in on.
-          </p>
-          {error && <p style={{ color: "#D55E00" }}>{error}</p>}
-          <input
+          <p className="text-text-muted m-0">Enter the code shown on the device you're logging in on.</p>
+          {error && (
+            <Banner tone="error" role="alert">
+              {error}
+            </Banner>
+          )}
+          <CodeInput
             value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="ABC123"
-            aria-label="pair code"
-            maxLength={6}
-            style={{
-              fontSize: 28,
-              letterSpacing: 6,
-              textAlign: "center",
-              width: 200,
-              padding: "10px 0",
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              textTransform: "uppercase",
-            }}
+            onChange={setCode}
+            length={6}
+            label="pair code"
+            hint="6 characters — letters and numbers"
           />
-          <button type="button" onClick={claim} disabled={code.trim().length < 6} style={primaryBtn(code.trim().length >= 6)}>
+          <Button onClick={claim} disabled={code.trim().length < 6} size="lg">
             Continue
-          </button>
+          </Button>
         </>
       )}
 
-      {phase.kind === "loading" && <p>Working…</p>}
+      {phase.kind === "loading" && (
+        <p className="flex items-center gap-2 text-text-muted m-0">
+          <Spinner size={18} /> {phase.what}
+        </p>
+      )}
 
       {phase.kind === "answer" && (
         <>
-          <p style={{ color: "#666", textAlign: "center" }}>Perform your move in your head, then tap the answer.</p>
-          <GridView grid={phase.grid} cellSize={56} ariaLabel="challenge grid" />
+          <p className="text-text-muted m-0">Perform your move in your head, then tap the answer.</p>
+          <div className="w-full max-w-[280px]">
+            <GridView grid={phase.grid} ariaLabel="challenge grid" />
+          </div>
           <AnswerInput shape={shape} onSubmit={(a) => submit(a, phase.pairCode)} />
         </>
       )}
 
       {phase.kind === "result" && (
         <>
-          <p style={{ fontSize: 22, fontWeight: 700, color: phase.pass ? "#009E73" : "#D55E00" }}>
+          <p className={"text-2xl font-bold m-0 " + (phase.pass ? "text-success" : "text-danger")}>
             {phase.pass ? "Approved ✓" : "Denied ✗"}
           </p>
-          <p style={{ color: "#666", textAlign: "center" }}>
+          <p className="text-text-muted m-0">
             {phase.pass ? "The other device is now logged in." : "That didn't match. Try again."}
           </p>
-          <button type="button" onClick={() => { setCode(""); setPhase({ kind: "code" }); }} style={primaryBtn(true)}>
+          <Button
+            onClick={() => {
+              setCode("");
+              setError(null);
+              setPhase({ kind: "code" });
+            }}
+          >
             Done
-          </button>
+          </Button>
         </>
       )}
 
-      <button type="button" onClick={onForget} style={linkBtn}>
-        Forget this move &amp; re-enroll
-      </button>
-    </div>
+      {confirmForget ? (
+        <div className="flex flex-col items-center gap-2 pt-1">
+          <p className="text-sm text-text-muted m-0">Forget your move? You'll have to build a new one.</p>
+          <div className="flex gap-2">
+            <Button variant="danger" size="sm" onClick={onForget}>
+              Yes, forget it
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmForget(false)}>
+              Keep it
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button variant="link" size="sm" onClick={() => setConfirmForget(true)}>
+          Forget this move &amp; re-enroll
+        </Button>
+      )}
+    </Card>
   );
 }
-
-function primaryBtn(enabled: boolean): React.CSSProperties {
-  return {
-    padding: "12px 28px",
-    borderRadius: 999,
-    border: "none",
-    background: enabled ? "#111" : "#ccc",
-    color: "#fff",
-    fontSize: 16,
-    cursor: enabled ? "pointer" : "default",
-  };
-}
-
-const linkBtn: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  color: "#0072B2",
-  cursor: "pointer",
-  fontSize: 13,
-  textDecoration: "underline",
-  marginTop: 8,
-};

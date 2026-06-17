@@ -1,7 +1,11 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import "./index.css";
 import { App } from "./App.js";
 import { ErrorBoundary } from "./ErrorBoundary.js";
+import { initTheme } from "./theme.js";
+
+initTheme();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root element");
