@@ -8,6 +8,11 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+/** Enter the Solo sandbox from the home mode chooser. */
+async function enterSolo(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /Solo sandbox/ }));
+}
+
 /** Drive the builder to enroll the rule All→Slide down→Count of red. */
 async function enrollAMove(user: ReturnType<typeof userEvent.setup>) {
   // Need the honest dry-run answers; recompute via the same seed the App uses.
@@ -24,6 +29,7 @@ async function enrollAMove(user: ReturnType<typeof userEvent.setup>) {
     return a.value;
   };
 
+  await enterSolo(user);
   await user.click(screen.getByRole("button", { name: "Build a move" }));
   await user.click(screen.getByRole("radio", { name: "All cells" }));
   await user.click(screen.getByRole("button", { name: /Next: the move/ }));
@@ -44,6 +50,7 @@ describe("App — enrollment persistence", () => {
   it("a fresh visitor starts with no move and is prompted to build one", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await enterSolo(user);
     await user.click(screen.getByRole("button", { name: "Practice" }));
     expect(screen.getByText(/haven't set a move yet/i)).toBeInTheDocument();
   });
@@ -63,11 +70,11 @@ describe("App — enrollment persistence", () => {
     await waitFor(() => expect(loadEnrollment()).not.toBeNull(), { timeout: 3000 });
     first.unmount();
 
-    // Second session: a fresh App, same storage → no "build first" prompt.
+    // Second session: a fresh App, same storage. Entering Solo should land
+    // straight in practice (no "build first" prompt) because the move restored.
     render(<App />);
+    await enterSolo(user);
     expect(screen.queryByText(/haven't set a move yet/i)).toBeNull();
-    // The practice grid is present (we're in practice, not the builder) — proof
-    // the move restored and we booted past the "build first" prompt.
     expect(screen.getByLabelText("practice challenge grid")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Practice" })).toBeInTheDocument();
   }, 20000);
