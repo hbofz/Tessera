@@ -140,4 +140,6 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for project conventions and the engin
 
 ## License
 
-[MIT](./LICENSE)
+[PolyForm Noncommercial 1.0.0](./LICENSE) — free to use, study, modify, and share
+for **any noncommercial purpose**, with attribution. Commercial use is not
+granted. (A learning project, not a product — see the limitations above.)
