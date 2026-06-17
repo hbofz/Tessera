@@ -21,19 +21,12 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   override render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: 24, margin: "auto", maxWidth: 480, color: "#1a1a1a" }}>
-          <h2 style={{ color: "#D55E00" }}>Something broke</h2>
-          <p style={{ color: "#666" }}>This is shown so the error is visible on-device:</p>
-          <pre
-            style={{
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              background: "#F5F5F5",
-              padding: 12,
-              borderRadius: 8,
-              fontSize: 13,
-            }}
-          >
+        <div className="m-auto max-w-[480px] w-full p-6 flex flex-col gap-3">
+          <h2 className="m-0 text-xl font-semibold text-danger">Something broke</h2>
+          <p className="m-0 text-text-muted text-sm">
+            This is shown so the error is visible on-device:
+          </p>
+          <pre className="whitespace-pre-wrap break-words bg-surface-2 border border-border text-text rounded-lg p-3 text-xs max-h-[40vh] overflow-auto m-0">
             {this.state.error.message}
             {"\n\n"}
             {this.state.error.stack}
@@ -41,7 +34,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
           <button
             type="button"
             onClick={() => this.setState({ error: null })}
-            style={{ padding: "10px 20px", borderRadius: 999, border: "none", background: "#111", color: "#fff" }}
+            className="self-start px-5 py-2.5 rounded-pill bg-ink text-ink-contrast font-medium"
           >
             Try again
           </button>

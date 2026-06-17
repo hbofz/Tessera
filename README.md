@@ -107,7 +107,7 @@ The engine is **one codebase** shared everywhere. `npm run sync:edge` copies it 
 |---|---|
 | **Shoulder-surfer** watches you log in | ✅ Protected — they see grids + tiny answers, never the move |
 | **Phone stolen / compromised** | ✅ Protected — the move isn't stored on the device; it's in your head |
-| **Server database breached** | ✅ Protected — the server stores only a hash of the move, never the move |
+| **Server database breached** | ⚠️ Partially — the server stores only a *hash* of the move, never the move itself. But the move is low-entropy and Tessera ships a *fast* hash (SHA-256), so a leaked hash is brute-forceable offline. See the honest limitations below and [`DESIGN.md §6`](./DESIGN.md). |
 
 **Honest limitations** (this is a learning project — these are disclosed, not hidden):
 

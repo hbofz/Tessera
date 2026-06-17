@@ -14,22 +14,22 @@ import { CELL_STYLES, EMPTY_STYLE } from "./palette.js";
 export function AnswerDisplay({ answer }: { answer: Answer }) {
   switch (answer.kind) {
     case "count":
-      return <Big>{answer.value}</Big>;
+      return (
+        <strong className="text-3xl tabular-nums" style={{ fontVariantNumeric: "tabular-nums" }}>
+          {answer.value}
+        </strong>
+      );
     case "cell":
       return <Chip cell={answer.value} />;
     case "line":
       return (
-        <span style={{ display: "inline-flex", gap: 4 }}>
+        <span className="inline-flex gap-1.5">
           {answer.value.map((c, i) => (
             <Chip key={i} cell={c} />
           ))}
         </span>
       );
   }
-}
-
-function Big({ children }: { children: React.ReactNode }) {
-  return <strong style={{ fontSize: 28, fontVariantNumeric: "tabular-nums" }}>{children}</strong>;
 }
 
 function Chip({ cell }: { cell: Color | typeof EMPTY }) {
@@ -41,19 +41,14 @@ function Chip({ cell }: { cell: Color | typeof EMPTY }) {
     <span
       role="img"
       aria-label={label}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 32,
-        height: 32,
-        borderRadius: 6,
-        background: fill,
-        color: "rgba(255,255,255,0.95)",
-        fontSize: 16,
-      }}
+      style={{ background: fill, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.1)" }}
+      className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-white text-base"
     >
-      {!isEmpty && glyph}
+      {!isEmpty && (
+        <span aria-hidden="true" className="drop-shadow">
+          {glyph}
+        </span>
+      )}
     </span>
   );
 }

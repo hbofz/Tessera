@@ -8,9 +8,9 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-/** Enter the Solo sandbox from the home mode chooser. */
+/** Enter the Solo sandbox from the home mode chooser (now "Build & practice"). */
 async function enterSolo(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /Solo sandbox/ }));
+  await user.click(screen.getByRole("button", { name: /Build & practice a move/ }));
 }
 
 /** Drive the builder to enroll the rule All→Slide down→Count of red. */
@@ -30,7 +30,7 @@ async function enrollAMove(user: ReturnType<typeof userEvent.setup>) {
   };
 
   await enterSolo(user);
-  await user.click(screen.getByRole("button", { name: "Build a move" }));
+  await user.click(screen.getByRole("tab", { name: "Build" }));
   await user.click(screen.getByRole("radio", { name: "All cells" }));
   await user.click(screen.getByRole("button", { name: /Next: the move/ }));
   await user.click(screen.getByRole("radio", { name: "Slide down" }));
@@ -51,7 +51,7 @@ describe("App — enrollment persistence", () => {
     const user = userEvent.setup();
     render(<App />);
     await enterSolo(user);
-    await user.click(screen.getByRole("button", { name: "Practice" }));
+    await user.click(screen.getByRole("tab", { name: "Practice" }));
     expect(screen.getByText(/haven't set a move yet/i)).toBeInTheDocument();
   });
 

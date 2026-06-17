@@ -8,5 +8,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/ui/test-setup.ts"],
+    // The StrengthVerdict Monte-Carlo runs synchronously and, under jsdom +
+    // StrictMode double-render, the full builder-walk test can exceed the 5s
+    // default. Give the UI suite headroom so it's reliable, not flaky.
+    testTimeout: 30000,
   },
 });

@@ -2,19 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="A second factor where your secret is a move you perform in your head, not a code you copy." />
     <title>Tessera</title>
-    <style>
-      :root { color-scheme: light; }
-      body {
-        margin: 0;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        background: #fff;
-        color: #1a1a1a;
-      }
-      #root { min-height: 100vh; display: flex; }
-      @keyframes tessera-spin { to { transform: rotate(360deg); } }
-    </style>
+    <script>
+      // Set the theme before first paint to avoid a flash of the wrong theme.
+      try {
+        var t = localStorage.getItem("tessera.theme");
+        if (t !== "light" && t !== "dark") {
+          t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
