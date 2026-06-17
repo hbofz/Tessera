@@ -17,6 +17,8 @@ import { useMemo, useState } from "react";
 import { GridView } from "./GridView.js";
 import { Builder } from "./Builder.js";
 import { Practice } from "./Practice.js";
+import { LaptopMode } from "./LaptopMode.js";
+import { PhoneMode } from "./PhoneMode.js";
 import { useGridClock } from "./useGridClock.js";
 import { DEFAULT_PARAMS } from "../engine/clock.js";
 import { OptionBVerifier } from "../auth/option-b-verifier.js";
@@ -40,7 +42,94 @@ const enumerateFor = (params: { rows: number; cols: number }): EnumerateOptions 
 
 type Tab = "clock" | "build" | "practice";
 
+// ── Top-level mode chooser ────────────────────────────────────────────────────
+// Tessera runs as one app in three modes:
+//   • Solo      — build + practice on one device (the original v1 sandbox).
+//   • Log in    — this device is the app you're signing into (laptop). [backend]
+//   • Authenticate — this device is your authenticator (phone). [backend]
+// The two-device modes talk to the Supabase backend; Solo is fully local.
+
+type Mode = "home" | "solo" | "laptop" | "phone";
+
 export function App() {
+  const [mode, setMode] = useState<Mode>("home");
+
+  return (
+    <main
+      style={{ margin: "auto", padding: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}
+    >
+      <h1 style={{ fontWeight: 600, fontSize: 26, margin: 0 }}>Tessera</h1>
+
+      {mode === "home" && <Home onPick={setMode} />}
+
+      {mode !== "home" && (
+        <button type="button" onClick={() => setMode("home")} style={backLink}>
+          ← back to start
+        </button>
+      )}
+
+      {mode === "solo" && <SoloMode />}
+      {mode === "laptop" && <LaptopMode />}
+      {mode === "phone" && <PhoneMode />}
+    </main>
+  );
+}
+
+function Home({ onPick }: { onPick: (m: Mode) => void }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 420, width: "100%" }}>
+      <p style={{ color: "#666", textAlign: "center", margin: "0 0 4px" }}>
+        A second factor where the secret is a move in your head. Pick what this device is:
+      </p>
+      <ModeCard
+        title="🔐 Log in to the demo app"
+        desc="This device is the app you're signing into (e.g. your laptop). Shows a code; your authenticator approves it."
+        onClick={() => onPick("laptop")}
+      />
+      <ModeCard
+        title="📱 Be the authenticator"
+        desc="This device holds your move (e.g. your phone). Enroll once, then approve logins by doing your move."
+        onClick={() => onPick("phone")}
+      />
+      <ModeCard
+        title="🧩 Solo sandbox"
+        desc="Build and practice a move on this one device — no second device, no network. The original demo."
+        onClick={() => onPick("solo")}
+      />
+    </div>
+  );
+}
+
+function ModeCard({ title, desc, onClick }: { title: string; desc: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        textAlign: "left",
+        padding: 16,
+        borderRadius: 14,
+        border: "1px solid #e3e3e3",
+        background: "#fff",
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 14, color: "#666" }}>{desc}</div>
+    </button>
+  );
+}
+
+const backLink: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "#0072B2",
+  cursor: "pointer",
+  fontSize: 13,
+  alignSelf: "flex-start",
+};
+
+function SoloMode() {
   // Restore a persisted enrollment on first render (lazy initializer runs once).
   const [enrollment, setEnrollment] = useState<Enrollment | null>(() => loadEnrollment());
   const [tab, setTab] = useState<Tab>(() => (loadEnrollment() ? "practice" : "clock"));
@@ -74,11 +163,7 @@ export function App() {
   };
 
   return (
-    <main
-      style={{ margin: "auto", padding: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}
-    >
-      <h1 style={{ fontWeight: 600, fontSize: 24, margin: 0 }}>Tessera</h1>
-
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
       <nav style={{ display: "flex", gap: 8 }}>
         <TabButton active={tab === "clock"} onClick={() => setTab("clock")}>
           Grid
@@ -115,7 +200,7 @@ export function App() {
         ) : (
           <NeedAMove onBuild={() => setTab("build")} />
         ))}
-    </main>
+    </div>
   );
 }
 

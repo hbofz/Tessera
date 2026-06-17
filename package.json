@@ -27,6 +27,7 @@
     "vitest": "^2.0.0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   }

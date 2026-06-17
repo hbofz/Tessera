@@ -3,3 +3,12 @@ dist/
 *.log
 .DS_Store
 coverage/
+.vscode/
+
+# Supabase local state (CLI-managed; not part of the repo)
+supabase/.temp/
+supabase/.branches/
+
+# Local-only env overrides (the committed .env holds PUBLIC keys only)
+.env.local
+.env.*.local
