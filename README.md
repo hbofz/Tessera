@@ -1,47 +1,33 @@
 # Tessera
 
-**A two-factor authenticator where your secret isn't a code you copy — it's a move you perform in your head.**
+Tessera is a second factor where the secret is a *move you perform in your head*, not a code you copy.
 
-A normal authenticator shows you a 6-digit code to type. Tessera shows you a small grid of colored shapes. You apply a secret *rule* of your own to that grid — a little transformation that lives only in your memory — and tap in the answer. The grid changes every time; the move never does. Someone could watch you log in a hundred times and still learn nothing, because they'd see a hundred different grids and never the rule that connects them.
+A normal authenticator shows you six digits to retype. Tessera shows you a grid of colored shapes that rolls every 45 seconds. You apply a transformation you've memorized, then tap one small fact about the result. The grid changes every login; the move never does. Someone can watch you authenticate a hundred times and see a hundred different grids, but never the rule connecting them.
 
-> **A personal learning project**, not a product. It is not trying to replace passkeys, not protecting real money, and not inventing new cryptography. It's a sandbox for exploring one idea: *what if the thing you memorize is a procedure, not a pattern?*
+This is a learning project. It is not audited, not a product, and not protecting anything real. The interesting part isn't the app, it's the constraint that makes it work: the move is picked from a **finite, enumerable menu of 57,024 rules**, which is exactly what lets a server verify it while storing only a hash.
 
----
+<p align="center">
+  <img src="docs/media/builder-transform.png" width="620" alt="The move builder showing a 4x4 grid before and after 'slide the red cells down', with the transform menu below.">
+</p>
 
-## The idea in 30 seconds
+## The three moving parts
 
-There are three moving parts:
+**The grid** is public. Both your device and the server derive it from a shared seed and the current time slice, exactly like a TOTP code, except it's a picture instead of digits.
 
-1. **The grid** (the challenge) — a 4×4 square of colored shapes that rolls to a new one every ~45s, like a TOTP code but a picture. It's public.
-2. **The move** (your secret) — a transformation you apply in your head, e.g. *"slide the red shapes down, then tell me how many reds there are."* It lives only in your memory.
-3. **The answer** (the response) — you run your move on the grid and tap in one small fact about the result. The system runs the same move and checks it matches.
+**The move** is your secret. It's a three-stage pipeline you assemble once: pick which cells to attend to, apply one or two transformations, then report one fact about the result. For example: *only the red cells → slide them down → how many reds are there now?*
 
-The move is built from a fixed menu — **SELECT → TRANSFORM → READOUT** — so it's a finite, enumerable secret (like a password chosen from a structured space). That's what makes it verifiable *without the server ever storing it*.
+**The answer** is a single scalar you tap. That last part is load-bearing. Tapping back the whole transformed grid would hand an observer a complete input/output example of your rule on every single login. A scalar reveals one projection instead, which caps how fast the move leaks. The strength meter estimates that rate directly.
 
-## What's built
+<p align="center">
+  <img src="docs/media/grid-clock.png" width="380" alt="The rolling challenge grid with a countdown bar and tick number.">
+  <img src="docs/media/strength-verdict.png" width="380" alt="The strength meter reporting roughly 1-in-4 guess resistance and about 11 observations to crack.">
+</p>
 
-A working end-to-end system, in two flavors:
+## Verifying a secret the server never stores
 
-- **Solo sandbox** — build a move, prove you've memorized it, and practice it on one device.
-- **Two-device flow** — the real authenticator experience: a demo app on your laptop shows a pairing code; your phone (the authenticator) does the move and approves the login. The verify happens on a real server (Supabase Edge Function); the laptop is notified live via Realtime.
+Because the rule is a selection from a fixed menu, the encoded move behaves like a password chosen from a structured space, and "verify a secret you don't store" is a solved problem. The grid isn't secret, so the move is the only thing worth protecting.
 
-In both, **the move never leaves the device it was built on** — the server stores only a one-way fingerprint of it.
-
-## Try it
-
-```sh
-npm install
-npm run dev          # http://localhost:5173
-```
-
-Pick a mode on the home screen:
-
-- **🧩 Solo sandbox** — *Build a move* → pass the "prove it from memory" gate → *Practice*. No network needed.
-- **📱 Be the authenticator** + **🔐 Log in to the demo app** — the two-device flow (needs the Supabase backend; see below). Open the app on two devices on the same Wi-Fi (`npm run dev -- --host` exposes it to your phone).
-
-A good first move: **All cells → Slide down → Count of red.** A count is the easiest answer to tap while you're learning.
-
-## How it works
+The server stores `hash(canonical(R))` and nothing else. At login it re-derives the grid, walks the menu, keeps every candidate rule that would have produced your answer on *this* grid, and checks whether any of them hashes to the stored fingerprint.
 
 ```
                     THE GRID  C(t)  — public, rolls every period, identical
@@ -61,91 +47,96 @@ A good first move: **All cells → Slide down → Count of red.** A count is the
             └─────────────────────────────────────────────────────┘
 ```
 
-The verifier never stores or sees the rule — only `hash(canonical(R))`. At login it **enumerates the finite menu of possible moves**, keeps the ones that would produce your answer on this grid, and checks if any of them hashes to the stored fingerprint. Many moves can produce the same answer, so a single login reveals almost nothing.
+Many rules produce the same answer on any given grid, so one login narrows things very little. The server learns your answer and that *some* rule producing it matched. It never learns which.
 
-See [`DESIGN.md`](./DESIGN.md) for the full design & decision record — every non-obvious choice and *why*.
+The move is displayed in exactly one place, the builder, and visibility ends at a dry-run gate that makes you perform it from memory with no hints before enrollment completes. After that the app has no way to show it to you, because it no longer has it.
 
-## Architecture
-
-```
-src/
-  engine/                 the pure core — runs identically in the browser, Node, and Deno
-    types.ts                canonical rule encoding + grid/cell model
-    grid.ts · prng.ts       immutable grids; deterministic cross-platform PRNG
-    clock.ts                C(t) = grid(seed, tick); degenerate-grid rejection
-    rule.ts                 SELECT → TRANSFORM(×≤2) → READOUT — the pure pipeline R(C)→answer
-    enumerate.ts            the finite, enumerable rule space (what makes verification possible)
-    strength.ts             the strength meter (blind-guess entropy + Monte-Carlo crack estimate)
-    readout-shape.ts        the answer's shape (so the UI can render input without the rule)
-  auth/                   verification — never stores the move
-    verifier.ts             the Verifier seam (Option A cleartext ↔ Option B hash-based)
-    option-b-verifier.ts    "B-enum": store hash(R), verify by enumerating the menu
-    canonical.ts            stable rule serialization (the hash input)
-    verifyhash.ts           pure-JS SHA-256 (browser + Deno safe)
-    login.ts                grace window + rate limit + replay defense
-    persistence.ts          localStorage enrollment (survives refresh)
-  ui/                     React frontend (Vite)
-    GridView · AnswerInput · palette   colorblind-safe (hue + redundant shape)
-    Builder · DryRunGate · StrengthVerdict   the move builder (the only place the move is shown)
-    Practice                drill the move, streak, PASS/FAIL only
-    LaptopMode · PhoneMode  the two-device flow
-    backend.ts              Supabase client + Edge Function calls + Realtime
-
-supabase/
-  migrations/             enrollments, login_sessions, auth_attempts (+ RLS)
-  functions/verify/       the Edge Function: enroll / start-login / claim / submit
-  functions/_shared/engine/   the engine, synced from src/ (one engine, never two)
-```
-
-The engine is **one codebase** shared everywhere. `npm run sync:edge` copies it into the Edge Function as Deno-native modules so there's never a second, drifting implementation.
-
-## Security model — and honest limitations
-
-**What Tessera defends** (where passwords/TOTP are weak):
-
-| Attack | Tessera |
-|---|---|
-| **Shoulder-surfer** watches you log in | ✅ Protected — they see grids + tiny answers, never the move |
-| **Phone stolen / compromised** | ✅ Protected — the move isn't stored on the device; it's in your head |
-| **Server database breached** | ⚠️ Partially — the server stores only a *hash* of the move, never the move itself. But the move is low-entropy and Tessera ships a *fast* hash (SHA-256), so a leaked hash is brute-forceable offline. See the honest limitations below and [`DESIGN.md §6`](./DESIGN.md). |
-
-**Honest limitations** (this is a learning project — these are disclosed, not hidden):
-
-- **The move is low-entropy.** It's chosen from a small menu, so a *leaked verifier hash* is brute-forceable offline. Mitigated by per-device **rate-limiting** (online guessing is throttled) and by choosing a stronger move (the strength meter shows you the tradeoff). A production version would use a slow hash (scrypt/Argon2) — Tessera uses fast SHA-256 so logins are ~instant; see [`DESIGN.md §6`](./DESIGN.md) for the full tradeoff writeup.
-- **Watched *and* observed many times:** an attacker who records many `(grid, answer)` pairs can narrow the move by elimination. The scalar-answer design throttles this; the strength meter estimates how many observations it would take.
-- Not audited, not for protecting anything real.
-
-## Development
+## Running it
 
 ```sh
 npm install
-npm run dev          # vite dev server (add `-- --host` to reach it from your phone)
-npm test             # vitest: engine + auth + ui (149 tests)
-npm run typecheck    # strict tsc
+npm run dev          # http://localhost:5173
+```
+
+Pick **Build & practice a move** on the home screen. It runs entirely in the browser with no backend and no network. Build a move, pass the memory gate, then drill it.
+
+A good first move is *all cells → slide down → count of red*. A count is the easiest answer to tap while you're still learning.
+
+The two-device flow (phone as authenticator, laptop as the app being logged into) needs your own Supabase project. See [Backend setup](#backend-setup).
+
+## How it's built
+
+The engine is one codebase that runs identically in the browser, in Node under test, and in Deno on the server. That last part is the only real trap in the repo, so it's worth stating plainly: Deno can't resolve the Node-style `.js` specifiers that `src/` uses, so `npm run sync:edge` copies the pure modules into `supabase/functions/_shared/engine/` and rewrites the imports. That folder is generated and committed, never hand-edited. Change anything on the verify path without re-running the sync and the server will happily verify against stale logic.
+
+```
+src/
+  engine/                 the pure core
+    types.ts                canonical rule encoding + grid/cell model
+    grid.ts · prng.ts       immutable grids; deterministic cross-platform PRNG
+    clock.ts                C(t) = grid(seed, tick); degenerate-grid rejection
+    rule.ts                 SELECT → TRANSFORM(×≤2) → READOUT — the pipeline R(C)→answer
+    enumerate.ts            the finite rule space (18 selects × 11 transforms × 24 readouts)
+    strength.ts             entropy + Monte-Carlo crack estimate
+    readout-shape.ts        the answer's shape, so the UI renders input without the rule
+  auth/
+    verifier.ts             the Verifier seam (Option A cleartext ↔ Option B hash-based)
+    option-b-verifier.ts    the shipped one: store hash(R), verify by enumeration
+    canonical.ts            stable serialization — the hash input
+    verifyhash.ts           pure-JS SHA-256 (browser + Deno safe)
+    login.ts                grace window, rate limit, replay defense
+  ui/                     React + Vite; palette is colorblind-safe (hue + redundant shape)
+
+supabase/
+  migrations/             enrollments, login_sessions, auth_attempts (+ RLS)
+  functions/verify/       one Edge Function routed by action: enroll / start-login / claim / submit
+```
+
+There are two SHA-256 implementations on purpose. `verifyhash.ts` is pure JS so it survives the sync into Deno; `slowhash.ts` uses `node:crypto` scrypt and deliberately does not.
+
+```sh
+npm test             # 153 tests: engine, auth, ui
+npm run typecheck    # strict tsc (noUncheckedIndexedAccess, exactOptionalPropertyTypes)
 npm run build        # typecheck + production bundle
-npm run sync:edge    # regenerate the Edge Function's copy of the engine from src/
+npm run sync:edge    # regenerate the Edge Function's engine copy
 ```
 
-### Backend (Supabase)
+## What it defends, and what it doesn't
 
-The two-device flow needs the Supabase project. Copy the template and fill in your project's values:
+Two attacks motivate the whole design, and it handles both:
+
+A **shoulder-surfer** sees public grids and one-scalar answers. Neither reveals the move, and the answer's small size is what throttles inference across repeat viewings.
+
+A **stolen or compromised phone** yields nothing, because the move isn't on the phone. It's in your head, and the device holds only a hash. This is the row where plain TOTP breaks outright, since a leaked TOTP seed is game over.
+
+The honest limits, which are disclosed rather than buried:
+
+**A leaked verifier hash is brute-forceable offline.** 57,024 candidates is small, and the shipped verifier uses fast SHA-256. This was a deliberate trade: a slow hash (scrypt) pushes a legitimate login to roughly 17 seconds, because verification enumerates hundreds of candidates and hashes each one. Fast SHA-256 makes a worst-case verify about 43ms. Online guessing is rate-limited, so the weakness is specifically an offline attack against a stolen database. `slowhash.ts` is kept for deployments willing to pay the latency, and an optional server-held pepper narrows it further. [DESIGN.md §6](./DESIGN.md#6-verification--how-the-server-checks-without-storing-the-move) walks through the reasoning.
+
+**Repeated observation degrades the secret.** An attacker who records enough `(grid, answer)` pairs can eliminate inconsistent rules until one survives. This is a real limit, not a hypothetical, so the strength meter simulates that exact attack and reports the number to your face before you commit to a move. Weak moves are cracked in about 11 observations. That number is shown at enrollment on purpose.
+
+**It hasn't been audited** and invents no new cryptography.
+
+## Backend setup
+
+Only needed for the two-device flow. You'll need your own Supabase project.
 
 ```sh
-cp .env.example .env
-```
-
-The frontend reads `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from `.env`. These are **public** by design (the anon key is meant to ship in the browser; real security is enforced by Row-Level Security + the Edge Function). Never commit the `service_role` key.
-
-```sh
+cp .env.example .env      # fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 supabase link --project-ref <your-project-ref>
-supabase db push                          # apply migrations
-supabase functions deploy verify --no-verify-jwt   # deploy the verifier
+supabase db push
+supabase functions deploy verify --no-verify-jwt
 ```
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for project conventions and the engine-sync workflow.
+Both env values are public by design. The anon key ships in the browser bundle, and access is enforced by row-level security plus the Edge Function. The `service_role` key should never appear in either file.
+
+With the backend up, open the app on two devices on the same network (`npm run dev -- --host`), choose **Log in to the demo app** on one and **Be the authenticator** on the other. Verification runs server-side and the result is pushed back over Realtime.
+
+## Design notes
+
+[DESIGN.md](./DESIGN.md) is the decision record. It documents why the readout is a scalar, why the rule space has to stay enumerable, and the fast-versus-slow-hash trade in detail. Its §9 invariants are load-bearing: the move is shown only in the builder, the raw rule is never stored, the rule space stays finite, and forgiveness lives in the time domain rather than in fuzzy answer matching.
+
+If you change core behavior, read §9 first. Most of those invariants are one careless commit away from being silently reverted, and a "review your move" settings screen would undo the entire premise.
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](./LICENSE) — free to use, study, modify, and share
-for **any noncommercial purpose**, with attribution. Commercial use is not
-granted. (A learning project, not a product — see the limitations above.)
+[PolyForm Noncommercial 1.0.0](./LICENSE). Free to use, study, modify, and share for noncommercial purposes, with attribution.
