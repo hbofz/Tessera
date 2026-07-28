@@ -3,6 +3,12 @@
   "version": "0.0.1",
   "private": true,
   "description": "A TOTP-style second factor where the rolling secret is a move you perform in your head.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hbofz/Tessera.git"
+  },
+  "homepage": "https://github.com/hbofz/Tessera#readme",
   "type": "module",
   "scripts": {
     "dev": "vite",
